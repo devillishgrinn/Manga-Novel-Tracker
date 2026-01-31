@@ -1,0 +1,13 @@
+# Node / tooling (if used)
+node_modules/
+
+# OS junk
+.DS_Store
+
+# Build / temp
+dist/
+.env
+
+# Chrome extension junk
+*.crx
+*.pem

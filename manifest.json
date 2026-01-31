@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "Site Tracker & Updater",
+  "version": "0.1.0",
+  "permissions": ["storage"],
+  "host_permissions": ["https://fenrirealm.com/*","https://www.fenrirealm.com/*"],
+  "background": {
+  "service_worker": "dist/background.js",
+  "type": "module"
+  },
+
+  "content_scripts": [
+  {
+    "matches": [
+      "https://fenrirealm.com/series/*",
+      "https://www.fenrirealm.com/series/*"
+    ],
+    "js": ["dist/contentScript.js"]
+  }
+],
+
+  "action": {
+    "default_popup": "popup.html"
+  }
+
+}
