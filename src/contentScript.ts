@@ -1,3 +1,5 @@
+//Fenrir Realm site:
+
 function extractFenrirealmPayload() {
   const match = location.pathname.match(
     /\/series\/([^/]+)\/(\d+)/
@@ -36,20 +38,47 @@ if (payload) {
   })
 }
 
+//HelioScans Site: 
 
-/*
-import { routePage } from "./core/router"
+function handleHelioScans() {
+  if (!location.hostname.includes("helioscans.com")) return
+  if (!location.pathname.startsWith("/chapter/")) return
 
-console.log("📄 Content script running on:", location.href)
+  console.log("🌀 Helios detected, waiting for title...")
 
-const payload = routePage(window.location.href)
+  setTimeout(() => {
+    const titleText = document.title
+    console.log("📝 Helios title:", titleText)
 
-console.log("📦 Extracted payload:", payload)
+    const match = titleText.match(/^(.*?)\s+-?\s*Chapter\s+(\d+)/i)
+    if (!match) {
+      console.warn("❌ Helios title not ready yet")
+      return
+    }
 
-if (payload) {
+    const title = match[1].trim()
+    const chapter = Number(match[2])
+
+    const payload = {
+      siteId: "helioscans",
+      title,
+      mediaType: "novel",
+      progress: chapter,
+      unit: "chapter",
+      sourceMap: {
+        helioscans: location.href
+      }
+    }
+
+    console.log("🚀 Helios payload:", payload)
+
     chrome.runtime.sendMessage({
-    type: "TRACK_PROGRESS",
-    payload
+      type: "TRACK_PROGRESS",
+      payload
     })
+  }, 1200)
 }
-    */
+
+extractFenrirealmPayload()
+handleHelioScans()
+

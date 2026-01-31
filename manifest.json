@@ -3,7 +3,7 @@
   "name": "Site Tracker & Updater",
   "version": "0.1.0",
   "permissions": ["storage"],
-  "host_permissions": ["https://fenrirealm.com/*","https://www.fenrirealm.com/*"],
+  "host_permissions": ["https://fenrirealm.com/*","https://www.fenrirealm.com/*", "https://helioscans.com/*"],
   "background": {
   "service_worker": "dist/background.js",
   "type": "module"
@@ -13,9 +13,11 @@
   {
     "matches": [
       "https://fenrirealm.com/series/*",
-      "https://www.fenrirealm.com/series/*"
+      "https://www.fenrirealm.com/series/*", 
+      "https://helioscans.com/*"
     ],
-    "js": ["dist/contentScript.js"]
+    "js": ["dist/contentScript.js"],
+    "run_at": "document_idle"
   }
 ],
 
