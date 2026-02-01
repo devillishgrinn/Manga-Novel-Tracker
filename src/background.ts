@@ -2,7 +2,7 @@
 import { loadEntries, saveEntries, upsertEntry } from "./core/storage.js"
 import { TrackerPayload } from "./core/models"
 
-console.log("🔥 Fenrir background service worker started")
+console.log("🔥 Manga/Novel Tracker background...")
 
 chrome.runtime.onMessage.addListener((message) => {
   console.log("📨 Message received:", message)

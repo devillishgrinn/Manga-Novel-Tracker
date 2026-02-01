@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Site Tracker & Updater",
+  "name": "Manga/Novel Tracker",
   "version": "0.1.0",
   "permissions": ["storage"],
   "host_permissions": ["https://fenrirealm.com/*","https://www.fenrirealm.com/*", "https://helioscans.com/*"],
