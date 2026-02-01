@@ -1,6 +1,8 @@
 import { SiteAdapter } from "./adapter"
-import { fenrirealmAdapter } from "../adapters/fenrirealm"  //Currently showing error because site not added yet
+import { fenrirealmAdapter } from "../adapters/fenrirealm"  
+import { helioScansAdapter } from "../adapters/helioscans";
 
 export const adapters: SiteAdapter[] = [
-    fenrirealmAdapter
+    fenrirealmAdapter,
+    helioScansAdapter
 ]
