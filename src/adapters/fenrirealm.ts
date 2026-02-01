@@ -1,3 +1,4 @@
+
 import { SiteAdapter } from "../core/adapter"
 import { TrackerPayload } from "../core/models"
 
@@ -37,13 +38,27 @@ export const fenrirealmAdapter: SiteAdapter = {
 
     if (!chapter) return null
 
+    let coverUrl = document.querySelector('meta[property="og:image"]')?.getAttribute('content') ||
+        document.querySelector('meta[name="twitter:image"]')?.getAttribute('content') ||
+        document.querySelector(`img[src*="${seriesSlug}"]`)?.getAttribute('src');
+
+    if (coverUrl && !coverUrl.startsWith('http')) {
+        try {
+            coverUrl = new URL(coverUrl, window.location.origin).href;
+        } catch (e) {
+            coverUrl = undefined; // Discard invalid URLs
+        }
+    }
+    
     return {
       title: slugToTitle(seriesSlug),
       mediaType: "novel",
       progress: chapter,
       unit: "chapter",
       sourceUrl: window.location.href,
-      siteId: "fenrirealm"
+      siteId: "fenrirealm",
+			seriesUrl: `${url.origin}/series/${seriesSlug}`,
+      coverUrl
     }
   }
 }

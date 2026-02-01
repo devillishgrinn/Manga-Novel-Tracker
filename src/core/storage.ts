@@ -23,22 +23,23 @@ export function upsertEntry(
     siteId: string
 ): TrackerEntry[] {
     const now = Date.now()
-
     const existing = entries.find(
-    e => e.title === payload.title && e.mediaType === payload.mediaType
+        e => e.title === payload.title && e.mediaType === payload.mediaType
     )
 
     if (!existing) {
     return [
     ...entries,
         {
-        id: crypto.randomUUID(),
-        title: payload.title,
-        mediaType: payload.mediaType,
-        progress: payload.progress,
-        unit: payload.unit,
-        sourceMap: { [siteId]: payload.sourceUrl },
-        lastUpdated: now
+            id: crypto.randomUUID(),
+            title: payload.title,
+            mediaType: payload.mediaType,
+            progress: payload.progress,
+            unit: payload.unit,
+            sourceMap: { [siteId]: payload.sourceUrl },
+            lastUpdated: now,
+            coverUrl: payload.coverUrl,
+            seriesUrl: payload.seriesUrl
         }
     ]
 }
@@ -47,6 +48,9 @@ if (payload.progress > existing.progress) {
     existing.progress = payload.progress
     existing.lastUpdated = now
 }
+
+if (payload.coverUrl) existing.coverUrl = payload.coverUrl;
+if (payload.seriesUrl) existing.seriesUrl = payload.seriesUrl;
 
 existing.sourceMap[siteId] = payload.sourceUrl
 

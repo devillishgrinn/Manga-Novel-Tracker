@@ -8,6 +8,8 @@ export interface TrackerPayload {
   unit: ProgressUnit
   sourceUrl: string
   siteId: string   
+  coverUrl?: string
+  seriesUrl?: string
 }
 
 export interface TrackerEntry {
@@ -18,4 +20,6 @@ export interface TrackerEntry {
   unit: ProgressUnit
   sourceMap: Record<string, string>
   lastUpdated: number
+  coverUrl?: string
+  seriesUrl?: string
 }
