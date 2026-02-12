@@ -62,7 +62,7 @@ describe("popup", () => {
     });
   });
 
-  it("increments progress and saves updated entries on +1 click", async () => {
+  it("increments progress and saves updated entries on + click", async () => {
     const entries: TrackerEntry[] = [
       {
         id: "id-1",
@@ -85,6 +85,60 @@ describe("popup", () => {
 
     expect(entries[0].progress).toBe(6);
     expect(saveEntries).toHaveBeenCalledWith(entries);
+  });
+
+  it("decrements progress with - click and clamps at chapter 1", async () => {
+    const entries: TrackerEntry[] = [
+      {
+        id: "id-1",
+        title: "Series One",
+        mediaType: "novel",
+        progress: 1,
+        unit: "chapter",
+        sourceMap: { fenrirealm: "https://fenrirealm.com/series/a/1" },
+        lastUpdated: 100,
+      },
+    ];
+    const loadEntries = vi.fn().mockImplementation(async () => entries);
+    const saveEntries = vi.fn().mockResolvedValue(undefined);
+    vi.doMock("../../src/core/storage", () => ({ loadEntries, saveEntries }));
+
+    await import("../../src/popup");
+    await tick();
+    (document.querySelector(".btn-dec") as HTMLButtonElement).click();
+    await tick();
+
+    expect(entries[0].progress).toBe(1);
+    expect(entries[0].sourceMap.fenrirealm).toBe("https://fenrirealm.com/series/a/1");
+    expect(saveEntries).toHaveBeenCalledWith(entries);
+  });
+
+  it("opens the updated chapter URL after progress change", async () => {
+    const entries: TrackerEntry[] = [
+      {
+        id: "id-1",
+        title: "Series One",
+        mediaType: "novel",
+        progress: 5,
+        unit: "chapter",
+        sourceMap: { fenrirealm: "https://fenrirealm.com/series/a/5" },
+        lastUpdated: 100,
+      },
+    ];
+    const loadEntries = vi.fn().mockImplementation(async () => entries);
+    const saveEntries = vi.fn().mockResolvedValue(undefined);
+    vi.doMock("../../src/core/storage", () => ({ loadEntries, saveEntries }));
+
+    await import("../../src/popup");
+    await tick();
+    (document.querySelector(".btn-inc") as HTMLButtonElement).click();
+    await tick();
+    (document.querySelector(".title") as HTMLElement).click();
+
+    expect(entries[0].sourceMap.fenrirealm).toBe("https://fenrirealm.com/series/a/6");
+    expect((globalThis as any).chrome.tabs.create).toHaveBeenCalledWith({
+      url: "https://fenrirealm.com/series/a/6",
+    });
   });
 
   it("deletes entry when confirmed", async () => {

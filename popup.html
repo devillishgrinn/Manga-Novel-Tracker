@@ -6,8 +6,8 @@
     <style>
         body {
             margin: 0;
-            padding: 0; /* Reset padding for full width header */
-            width: 320px;
+            padding: 0;
+            width: 360px;
             font-family: 'Segoe UI', system-ui, sans-serif;
             background: #0f0f0f;
             color: #f5f5f5;
@@ -31,36 +31,118 @@
 
         #list {
             padding: 12px;
-            max-height: 400px;
+            max-height: 440px;
             overflow-y: auto;
         }
 
-        .entry {
-        background: #1a1a1a;
-        padding: 8px;
-        border-radius: 8px;
-        margin-bottom: 10px;
-        border: 1px solid #2a2a2a;
+        .site-section {
+            margin-bottom: 14px;
+        }
 
-        display: flex;
-        flex-direction: row; /* Force horizontal row */
-        align-items: center; /* Vertically center items */
-        gap: 12px;           /* Space between Image, Info, and Buttons */
+        .site-banner {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 10px;
+            margin-bottom: 8px;
+            border: 1px solid #2f3644;
+            border-radius: 10px;
+            background: linear-gradient(90deg, #1b2230 0%, #171717 100%);
+        }
+
+        .site-logo {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            font-weight: 700;
+            background: #2b3750;
+            color: #dce8ff;
+            border: 1px solid #4a5d85;
+            flex-shrink: 0;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .site-logo-img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 50%;
+            display: block;
+        }
+
+        .site-logo-fallback {
+            width: 100%;
+            height: 100%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .site-banner-copy {
+            display: flex;
+            align-items: baseline;
+            gap: 8px;
+            min-width: 0;
+        }
+
+        .site-banner-name {
+            font-size: 13px;
+            font-weight: 600;
+            color: #dfe7ff;
+        }
+
+        .site-banner-count {
+            font-size: 10px;
+            color: #8da2cc;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+        }
+
+        .site-items {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .entry {
+            background: #1a1a1a;
+            padding: 8px;
+            border-radius: 8px;
+            border: 1px solid #2a2a2a;
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .entry.entry-manga {
+            background: linear-gradient(90deg, #1b1712 0%, #1a1a1a 65%);
+            border-color: #4a3725;
+        }
+
+        .entry.entry-novel {
+            background: linear-gradient(90deg, #131b1a 0%, #1a1a1a 65%);
+            border-color: #26433e;
         }
 
         .cover-wrapper {
-        flex-shrink: 0; /* Prevent image from squishing */
-        width: 45px;    /* Fixed width */
-        height: 65px;   /* Fixed height */
+            flex-shrink: 0;
+            width: 45px;
+            height: 65px;
         }
 
         .cover-img {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-        border-radius: 4px;
-        cursor: pointer;
-        border: 1px solid #333;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 4px;
+            cursor: pointer;
+            border: 1px solid #333;
         }
 
         .entry:hover {
@@ -68,25 +150,33 @@
             border-color: #444;
         }
 
+        .entry.entry-manga:hover {
+            background: linear-gradient(90deg, #231a12 0%, #222 65%);
+            border-color: #5a422b;
+        }
+
+        .entry.entry-novel:hover {
+            background: linear-gradient(90deg, #15201f 0%, #222 65%);
+            border-color: #2e5650;
+        }
+
         .info {
-        flex-grow: 1; /* Take up all remaining middle space */
-        min-width: 0; /* Critical for text-overflow to work */
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
+            flex-grow: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
         }
 
         .title {
-        font-weight: 600;
-        font-size: 14px;
-        color: #4da6ff;
-        cursor: pointer;
-        
-        /* Truncate long titles with "..." */
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        margin-bottom: 4px;
+            font-weight: 600;
+            font-size: 14px;
+            color: #4da6ff;
+            cursor: pointer;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin-bottom: 4px;
         }
 
         .title:hover {
@@ -94,11 +184,38 @@
         }
 
         .meta {
-        font-size: 11px;
-        color: #888;
-        display: flex;
-        align-items: center;
-        gap: 6px;
+            font-size: 11px;
+            color: #888;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+
+        .chapter-controls {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .chapter-controls button {
+            padding: 2px 6px;
+            min-width: 20px;
+            line-height: 1;
+            font-size: 12px;
+        }
+
+        .chapter-value {
+            color: #bbb;
+        }
+
+        .linked-tag {
+            font-size: 10px;
+            color: #9aa0a8;
+            background: #262a31;
+            border: 1px solid #343a44;
+            border-radius: 10px;
+            padding: 2px 6px;
         }
 
         .badge {
@@ -110,12 +227,21 @@
             letter-spacing: 0.5px;
         }
 
+        .entry.entry-manga .badge {
+            background: #3a2a1b;
+            color: #ffd6a8;
+        }
+
+        .entry.entry-novel .badge {
+            background: #1f3430;
+            color: #b9efe4;
+        }
+
         .actions {
-        flex-shrink: 0; /* Don't shrink buttons */
-        display: flex;
-        flex-direction: column; /* Stack buttons vertically to save width? */
-        gap: 4px;
-        /* Or keep them horizontal: flex-direction: row; */
+            flex-shrink: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
         }
 
         button {
@@ -147,7 +273,6 @@
             margin-top: 40px;
             font-size: 13px;
         }
-
     </style>
 </head>
 <body>
