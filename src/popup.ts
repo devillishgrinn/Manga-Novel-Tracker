@@ -26,6 +26,7 @@ function formatSiteName(siteId: string): string {
     if (siteId === "helioscans") return "HelioScans";
     if (siteId === "fenrirealm") return "Fenrir Realm";
     if (siteId === "asurascans") return "Asura Scans";
+    if (siteId === "manganato") return "MangaNato";
 
   // Default: Capitalize first letter (e.g. "manganato" -> "Manganato")
     return siteId.charAt(0).toUpperCase() + siteId.slice(1);
@@ -35,6 +36,7 @@ function getSiteMonogram(siteId: string): string {
     if (siteId === "asurascans") return "AS";
     if (siteId === "fenrirealm") return "FR";
     if (siteId === "helioscans") return "HS";
+    if (siteId === "manganato") return "MN";
     return siteId.slice(0, 2).toUpperCase();
 }
 
@@ -42,7 +44,23 @@ function getSiteLogoUrl(siteId: string): string | null {
     if (siteId === "asurascans") return "https://asuracomic.net/images/logo.webp";
     if (siteId === "fenrirealm") return "https://fenrirealm.com/img/favicon/favicon-32x32.png";
     if (siteId === "helioscans") return "https://cdn.meowing.org/uploads/_9FxZ8P7Tik";
+    if (siteId === "manganato") return "https://www.manganato.gg/images/logo-manganato.webp";
     return null;
+}
+
+function getSiteCoverFallback(siteId: string, sourceUrl?: string): string {
+    if (siteId === "manganato") {
+    try {
+        if (sourceUrl && new URL(sourceUrl).hostname.includes("mangakakalot.gg")) {
+        return "https://www.mangakakalot.gg/images/404-avatar.webp";
+        }
+    } catch {
+        // Ignore parse errors and use default fallback below.
+    }
+    return "https://www.manganato.gg/images/default_nato.webp";
+    }
+
+    return "https://via.placeholder.com/50x70?text=No+Img";
 }
 
 function getPrimarySiteId(entry: TrackerEntry): string {
@@ -79,6 +97,14 @@ function rewriteChapterUrl(siteId: string, currentUrl: string, chapter: number):
     if (siteId === "helioscans" && /\/series\/[^/]+\/\d+(?:\.\d+)?\/?$/i.test(parsed.pathname)) {
         parsed.pathname = parsed.pathname.replace(
         /(\/series\/[^/]+\/)(\d+(?:\.\d+)?)(\/?)/i,
+        `$1${chapterValue}$3`,
+        );
+        return parsed.href;
+    }
+
+    if (siteId === "manganato") {
+        parsed.pathname = parsed.pathname.replace(
+        /(\/manga\/[^/]+\/chapter[-_])(\d+(?:[._-]\d+)?)(\/?)/i,
         `$1${chapterValue}$3`,
         );
         return parsed.href;
@@ -173,14 +199,16 @@ function render(entries: TrackerEntry[]) {
         const div = document.createElement("div");
         div.className = `entry entry-${entry.mediaType}`;
 
+        const primarySiteId = getPrimarySiteId(entry);
         const sourceUrl = getPrimaryChapterUrl(entry);
         const seriesUrl = entry.seriesUrl || sourceUrl;
-        const coverImage = entry.coverUrl || "https://via.placeholder.com/50x70?text=No+Img";
+        const coverFallback = getSiteCoverFallback(primarySiteId, sourceUrl === "#" ? undefined : sourceUrl);
+        const coverImage = entry.coverUrl || coverFallback;
         const linkedCount = Object.keys(entry.sourceMap).length;
 
         div.innerHTML = `
         <div class="cover-wrapper" title="Go to Series Page" style="cursor: pointer;">
-            <img src="${coverImage}" class="cover-img" data-href="${seriesUrl}" />
+            <img src="${coverImage}" class="cover-img" data-href="${seriesUrl}" data-fallback-src="${coverFallback}" />
         </div>
 
         <div class="info">
@@ -201,7 +229,18 @@ function render(entries: TrackerEntry[]) {
         </div>
         `;
 
-        const coverImg = div.querySelector(".cover-img") as HTMLElement;
+        const coverImg = div.querySelector(".cover-img") as HTMLImageElement;
+        coverImg.addEventListener("error", () => {
+        const fallback = coverImg.dataset.fallbackSrc || "https://via.placeholder.com/50x70?text=No+Img";
+        if (coverImg.src !== fallback) {
+            coverImg.src = fallback;
+            return;
+        }
+
+        if (fallback !== "https://via.placeholder.com/50x70?text=No+Img") {
+            coverImg.src = "https://via.placeholder.com/50x70?text=No+Img";
+        }
+        });
         coverImg.addEventListener("click", () => {
         const url = coverImg.getAttribute("data-href");
         if (url && url !== "#") chrome.tabs.create({ url });

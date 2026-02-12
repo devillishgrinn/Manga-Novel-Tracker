@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Manga/Novel Tracker",
   "version": "0.1.0",
-  "permissions": ["storage"],
+  "permissions": ["storage", "declarativeNetRequestWithHostAccess"],
   "host_permissions": [
     "https://fenrirealm.com/*",
     "https://www.fenrirealm.com/*",
@@ -11,7 +11,14 @@
     "https://www.asuracomic.net/*",
     "https://asurascans.com/*",
     "https://www.asurascans.com/*",
-    "https://beta.asurascans.com/*"
+    "https://beta.asurascans.com/*",
+    "https://manganato.gg/*",
+    "https://www.manganato.gg/*",
+    "https://mangakakalot.gg/*",
+    "https://www.mangakakalot.gg/*",
+    "https://img-r1.2xstorage.com/*",
+    "https://imgs-2.2xstorage.com/*",
+    "https://storage.waitst.com/*"
   ],
   "background": {
     "service_worker": "dist/background.js",
@@ -27,7 +34,11 @@
         "https://www.asuracomic.net/series/*/chapter/*",
         "https://asurascans.com/series/*/chapter/*",
         "https://www.asurascans.com/series/*/chapter/*",
-        "https://beta.asurascans.com/series/*/chapter/*"
+        "https://beta.asurascans.com/series/*/chapter/*",
+        "https://manganato.gg/manga/*/chapter*",
+        "https://www.manganato.gg/manga/*/chapter*",
+        "https://mangakakalot.gg/manga/*/chapter*",
+        "https://www.mangakakalot.gg/manga/*/chapter*"
       ],
       "js": ["dist/contentScript.js"],
       "run_at": "document_idle"

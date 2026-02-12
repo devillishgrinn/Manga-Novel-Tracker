@@ -23,6 +23,9 @@ A Manifest V3 Chrome extension that automatically tracks your reading progress o
   - `asuracomic.net`
   - `asurascans.com`
   - `beta.asurascans.com`
+- MangaNato / MangaKakalot
+  - `manganato.gg`
+  - `mangakakalot.gg`
 
 ## Tech Stack
 

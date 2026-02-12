@@ -11,6 +11,9 @@ describe("background message handling", () => {
     const saveEntries = vi.fn();
     const upsertEntry = vi.fn();
     const addListener = vi.fn();
+    const addInstalledListener = vi.fn();
+    const addStartupListener = vi.fn();
+    const updateDynamicRules = vi.fn().mockResolvedValue(undefined);
 
     vi.doMock("../../src/core/storage.js", () => ({
       loadEntries,
@@ -19,7 +22,13 @@ describe("background message handling", () => {
     }));
 
     (globalThis as any).chrome = {
-      runtime: { onMessage: { addListener } },
+      runtime: {
+        id: "test-extension-id",
+        onMessage: { addListener },
+        onInstalled: { addListener: addInstalledListener },
+        onStartup: { addListener: addStartupListener },
+      },
+      declarativeNetRequest: { updateDynamicRules },
     };
 
     await import("../../src/background");
@@ -29,6 +38,7 @@ describe("background message handling", () => {
     expect(loadEntries).not.toHaveBeenCalled();
     expect(saveEntries).not.toHaveBeenCalled();
     expect(upsertEntry).not.toHaveBeenCalled();
+    expect(updateDynamicRules).toHaveBeenCalled();
   });
 
   it("tracks progress and fetches missing cover when seriesUrl exists", async () => {
@@ -38,6 +48,9 @@ describe("background message handling", () => {
     const saveEntries = vi.fn().mockResolvedValue(undefined);
     const upsertEntry = vi.fn().mockReturnValue(updated);
     const addListener = vi.fn();
+    const addInstalledListener = vi.fn();
+    const addStartupListener = vi.fn();
+    const updateDynamicRules = vi.fn().mockResolvedValue(undefined);
 
     vi.doMock("../../src/core/storage.js", () => ({
       loadEntries,
@@ -46,7 +59,13 @@ describe("background message handling", () => {
     }));
 
     (globalThis as any).chrome = {
-      runtime: { onMessage: { addListener } },
+      runtime: {
+        id: "test-extension-id",
+        onMessage: { addListener },
+        onInstalled: { addListener: addInstalledListener },
+        onStartup: { addListener: addStartupListener },
+      },
+      declarativeNetRequest: { updateDynamicRules },
     };
 
     (globalThis as any).fetch = vi.fn().mockResolvedValue({
