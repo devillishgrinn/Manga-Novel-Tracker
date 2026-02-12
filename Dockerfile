@@ -1,20 +1,23 @@
-# 1️⃣ Use a lightweight Node image
-FROM node:20-alpine
+# syntax=docker/dockerfile:1
 
-# 2️⃣ Set working directory
+FROM node:20-alpine AS deps
 WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
 
-# 3️⃣ Copy dependency files first (better caching)
-COPY package.json package-lock.json* ./
-
-# 4️⃣ Install dependencies
-RUN npm install
-
-# 5️⃣ Copy the rest of the source code
-COPY . .
-
-# 6️⃣ Build TypeScript
+FROM deps AS build
+WORKDIR /app
+COPY tsconfig.json ./
+COPY manifest.json ./
+COPY popup.html ./
+COPY src ./src
 RUN npm run build
 
-# 7️⃣ Default command (optional, keeps container useful)
+FROM alpine:3.20 AS extension
+WORKDIR /extension
+COPY --from=build /app/manifest.json ./manifest.json
+COPY --from=build /app/popup.html ./popup.html
+COPY --from=build /app/dist ./dist
+
+# This image stores built extension artifacts only.
 CMD ["sh"]
