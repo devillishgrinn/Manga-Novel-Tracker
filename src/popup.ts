@@ -4,13 +4,61 @@ import { TrackerEntry } from "./core/models";
 console.log("Popup script loaded");
 
 const list = document.getElementById("list")!;
+const mediaToggle = document.getElementById("mediaToggle");
+const mediaTogglePill = mediaToggle?.querySelector<HTMLElement>(".media-toggle-pill");
+
+type MediaFilter = "manga" | "novel";
 
 type SiteGroup = {
     siteId: string;
     entries: TrackerEntry[];
 };
 
+let activeMediaFilter: MediaFilter = "manga";
+let cachedEntries: TrackerEntry[] = [];
+
+setupMediaToggle();
 refreshList();
+
+function isMediaFilter(value: string): value is MediaFilter {
+    return value === "manga" || value === "novel";
+}
+
+function setupMediaToggle() {
+    if (!mediaToggle) return;
+
+    const buttons = mediaToggle.querySelectorAll<HTMLButtonElement>(".media-toggle-btn[data-media]");
+    buttons.forEach((button) => {
+    button.addEventListener("click", () => {
+        const media = button.dataset.media;
+        if (!media || !isMediaFilter(media) || media === activeMediaFilter) return;
+
+        activeMediaFilter = media;
+        syncMediaToggleState();
+        renderFilteredEntries();
+    });
+    });
+
+    syncMediaToggleState();
+}
+
+function syncMediaToggleState() {
+    if (!mediaToggle) return;
+
+    const buttons = mediaToggle.querySelectorAll<HTMLButtonElement>(".media-toggle-btn[data-media]");
+    buttons.forEach((button) => {
+    const isActive = button.dataset.media === activeMediaFilter;
+    button.classList.toggle("active", isActive);
+    button.setAttribute("aria-selected", String(isActive));
+    });
+
+    mediaTogglePill?.setAttribute("data-active", activeMediaFilter);
+}
+
+function renderFilteredEntries() {
+    const filteredEntries = cachedEntries.filter((entry) => entry.mediaType === activeMediaFilter);
+    render(filteredEntries);
+}
 
 async function refreshList() {
     const entries = await loadEntries();
@@ -18,7 +66,8 @@ async function refreshList() {
   // Sort by last updated (newest first)
     entries.sort((a, b) => b.lastUpdated - a.lastUpdated);
 
-    render(entries);
+    cachedEntries = entries;
+    renderFilteredEntries();
 }
 
 function formatSiteName(siteId: string): string {
@@ -157,7 +206,11 @@ function groupEntriesBySite(entries: TrackerEntry[]): SiteGroup[] {
 
 function render(entries: TrackerEntry[]) {
     if (entries.length === 0) {
-    list.innerHTML = `<div class="empty">No tracked entries yet<br>Read something to get started!</div>`;
+    if (cachedEntries.length === 0) {
+        list.innerHTML = `<div class="empty">No tracked entries yet<br>Read something to get started!</div>`;
+    } else {
+        list.innerHTML = `<div class="empty">No tracked ${activeMediaFilter} entries yet<br>Switch the toggle to view the other type.</div>`;
+    }
     return;
     }
 
