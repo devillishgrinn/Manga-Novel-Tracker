@@ -3,24 +3,36 @@
   "name": "Manga/Novel Tracker",
   "version": "0.1.0",
   "permissions": ["storage"],
-  "host_permissions": ["https://fenrirealm.com/*","https://www.fenrirealm.com/*", "https://helioscans.com/*"],
+  "host_permissions": [
+    "https://fenrirealm.com/*",
+    "https://www.fenrirealm.com/*",
+    "https://helioscans.com/*",
+    "https://asuracomic.net/*",
+    "https://www.asuracomic.net/*",
+    "https://asurascans.com/*",
+    "https://www.asurascans.com/*",
+    "https://beta.asurascans.com/*"
+  ],
   "background": {
-  "service_worker": "dist/background.js",
-  "type": "module"
+    "service_worker": "dist/background.js",
+    "type": "module"
   },
-
   "content_scripts": [
-  {
-    "matches": [
-      "https://fenrirealm.com/series/*",
-      "https://www.fenrirealm.com/series/*", 
-      "https://helioscans.com/*"
-    ],
-    "js": ["dist/contentScript.js"],
-    "run_at": "document_idle"
-  }
-],
-
+    {
+      "matches": [
+        "https://fenrirealm.com/series/*",
+        "https://www.fenrirealm.com/series/*",
+        "https://helioscans.com/*",
+        "https://asuracomic.net/series/*/chapter/*",
+        "https://www.asuracomic.net/series/*/chapter/*",
+        "https://asurascans.com/series/*/chapter/*",
+        "https://www.asurascans.com/series/*/chapter/*",
+        "https://beta.asurascans.com/series/*/chapter/*"
+      ],
+      "js": ["dist/contentScript.js"],
+      "run_at": "document_idle"
+    }
+  ],
   "action": {
     "default_popup": "popup.html"
   }
