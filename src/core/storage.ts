@@ -35,6 +35,7 @@ export function upsertEntry(
             title: payload.title,
             mediaType: payload.mediaType,
             progress: payload.progress,
+            latestKnownChapter: payload.progress,
             unit: payload.unit,
             sourceMap: { [siteId]: payload.sourceUrl },
             lastUpdated: now,
@@ -48,6 +49,8 @@ if (payload.progress > existing.progress) {
     existing.progress = payload.progress
     existing.lastUpdated = now
 }
+
+existing.latestKnownChapter = Math.max(existing.latestKnownChapter ?? 0, payload.progress)
 
 if (payload.coverUrl) existing.coverUrl = payload.coverUrl;
 if (payload.seriesUrl) existing.seriesUrl = payload.seriesUrl;

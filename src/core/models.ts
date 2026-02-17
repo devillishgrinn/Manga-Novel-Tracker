@@ -17,6 +17,8 @@ export interface TrackerEntry {
   title: string
   mediaType: MediaType
   progress: number
+  latestKnownChapter?: number
+  lastCheckedAt?: number
   unit: ProgressUnit
   sourceMap: Record<string, string>
   lastUpdated: number

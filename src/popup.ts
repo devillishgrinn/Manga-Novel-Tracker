@@ -328,7 +328,6 @@ async function updateProgress(id: string, amount: number) {
     if (entry) {
     entry.progress = Math.max(1, entry.progress + amount);
     updateEntryChapterUrls(entry);
-    entry.lastUpdated = Date.now();
     await saveEntries(entries);
     refreshList();
     }
