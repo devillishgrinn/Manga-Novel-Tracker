@@ -91,6 +91,80 @@
             overflow-y: auto;
         }
 
+        .detected-panel {
+            margin: 10px 12px 0;
+            padding: 10px;
+            border-radius: 10px;
+            border: 1px solid #31415f;
+            background: linear-gradient(90deg, #1b2436 0%, #171717 100%);
+        }
+
+        .detected-panel.hidden {
+            display: none;
+        }
+
+        .detected-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: #e6eeff;
+            margin-bottom: 4px;
+        }
+
+        .detected-preview {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 8px;
+        }
+
+        .detected-cover-img {
+            width: 34px;
+            height: 48px;
+            border-radius: 4px;
+            object-fit: cover;
+            border: 1px solid #3e4f74;
+            flex-shrink: 0;
+        }
+
+        .detected-copy {
+            min-width: 0;
+        }
+
+        .detected-meta {
+            font-size: 11px;
+            color: #9eb3da;
+            margin-bottom: 8px;
+        }
+
+        .detected-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .detected-actions .btn-track {
+            padding: 6px 10px;
+            border: 1px solid #4a5d85;
+            background: #2b3750;
+            color: #eef4ff;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .detected-autotrack {
+            font-size: 11px;
+            color: #b8c8e8;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .detected-status {
+            font-size: 11px;
+            color: #8dd3a4;
+        }
+
         .site-section {
             margin-bottom: 14px;
         }
@@ -323,6 +397,7 @@
             <button type="button" class="media-toggle-btn" data-media="novel" role="tab" aria-selected="false">Novel</button>
         </div>
     </div>
+    <section id="detectedPanel" class="detected-panel hidden" aria-live="polite"></section>
     <div id="list"></div>
     <script src="dist/popup.js"></script>
 </body>
