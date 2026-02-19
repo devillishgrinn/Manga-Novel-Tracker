@@ -35,7 +35,7 @@ describe("popup", () => {
       {
         id: "id-1",
         title: "Series One",
-        mediaType: "novel",
+        mediaType: "manga",
         progress: 12,
         unit: "chapter",
         sourceMap: { fenrirealm: "https://fenrirealm.com/series/a/12" },
@@ -67,7 +67,7 @@ describe("popup", () => {
       {
         id: "id-1",
         title: "Series One",
-        mediaType: "novel",
+        mediaType: "manga",
         progress: 5,
         unit: "chapter",
         sourceMap: { fenrirealm: "https://fenrirealm.com/series/a/5" },
@@ -92,7 +92,7 @@ describe("popup", () => {
       {
         id: "id-1",
         title: "Series One",
-        mediaType: "novel",
+        mediaType: "manga",
         progress: 1,
         unit: "chapter",
         sourceMap: { fenrirealm: "https://fenrirealm.com/series/a/1" },
@@ -118,7 +118,7 @@ describe("popup", () => {
       {
         id: "id-1",
         title: "Series One",
-        mediaType: "novel",
+        mediaType: "manga",
         progress: 5,
         unit: "chapter",
         sourceMap: { fenrirealm: "https://fenrirealm.com/series/a/5" },
@@ -146,7 +146,7 @@ describe("popup", () => {
       {
         id: "id-1",
         title: "Series One",
-        mediaType: "novel",
+        mediaType: "manga",
         progress: 5,
         unit: "chapter",
         sourceMap: { fenrirealm: "https://fenrirealm.com/series/a/5" },
@@ -166,3 +166,4 @@ describe("popup", () => {
     expect(saveEntries).toHaveBeenCalledWith([]);
   });
 });
+

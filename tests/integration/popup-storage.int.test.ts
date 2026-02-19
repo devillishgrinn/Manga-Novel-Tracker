@@ -34,7 +34,7 @@ describe("integration: popup + storage", () => {
       {
         id: "entry-1",
         title: "Popup Story",
-        mediaType: "novel",
+        mediaType: "manga",
         progress: 3,
         unit: "chapter",
         sourceMap: { fenrirealm: "https://fenrirealm.com/series/popup-story/3" },
@@ -63,3 +63,4 @@ describe("integration: popup + storage", () => {
     });
   });
 });
+

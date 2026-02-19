@@ -46,6 +46,39 @@ describe("storage", () => {
     expect(result).toEqual(stored);
   });
 
+  it("loadEntries consolidates duplicates with matching series", async () => {
+    const stored: TrackerEntry[] = [
+      {
+        id: "1",
+        title: "Shared Story",
+        mediaType: "novel",
+        progress: 10,
+        unit: "chapter",
+        sourceMap: { asuracomic: "https://asuracomic.net/series/shared-story/chapter/10" },
+        lastUpdated: 100,
+        seriesUrl: "https://asuracomic.net/series/shared-story",
+      },
+      {
+        id: "2",
+        title: "Shared Story",
+        mediaType: "novel",
+        progress: 12,
+        unit: "chapter",
+        sourceMap: { asurascans: "https://asurascans.com/series/shared-story/chapter/12" },
+        lastUpdated: 200,
+        seriesUrl: "https://asurascans.com/series/shared-story",
+      },
+    ];
+    getMock.mockResolvedValue({ trackerEntries: stored });
+
+    const result = await loadEntries();
+    expect(result).toHaveLength(1);
+    expect(result[0].progress).toBe(12);
+    expect(result[0].sourceMap.asurascans).toBe(
+      "https://asurascans.com/series/shared-story/chapter/12",
+    );
+  });
+
   it("saveEntries writes to chrome storage with trackerEntries key", async () => {
     const entries: TrackerEntry[] = [];
     await saveEntries(entries);
@@ -77,6 +110,7 @@ describe("storage", () => {
       unit: payload.unit,
       sourceMap: { fenrirealm: payload.sourceUrl },
       lastUpdated: 1234,
+      latestKnownChapter: payload.progress,
       coverUrl: payload.coverUrl,
       seriesUrl: payload.seriesUrl,
     });
@@ -140,5 +174,36 @@ describe("storage", () => {
     const result = upsertEntry([existing], payload, payload.siteId);
     expect(result[0].progress).toBe(9);
     expect(result[0].lastUpdated).toBe(2222);
+  });
+
+  it("upsertEntry merges by normalized series URL even when title formatting differs", () => {
+    vi.spyOn(Date, "now").mockReturnValue(3333);
+    const existing: TrackerEntry = {
+      id: "id-1",
+      title: "A Dragonslayer's Peerless Regression",
+      mediaType: "novel",
+      progress: 590,
+      unit: "chapter",
+      sourceMap: {
+        rapid: "https://t87p34ahr7i09lm.live/series/dragonslayers-class-regression/aa11111",
+      },
+      seriesUrl: "https://t87p34ahr7i09lm.live/series/dragonslayers-class-regression",
+      lastUpdated: 1000,
+    };
+
+    const payload: TrackerPayload = {
+      title: "Dragonslayers Class Regression",
+      mediaType: "novel",
+      progress: 593,
+      unit: "chapter",
+      sourceUrl: "https://t87p34ahr7i09lm.live/series/dragonslayers-class-regression/bbgtwxv",
+      siteId: "t87p34ahr7i09lm.live",
+      seriesUrl: "https://t87p34ahr7i09lm.live/series/dragonslayers-class-regression",
+    };
+
+    const result = upsertEntry([existing], payload, payload.siteId);
+    expect(result).toHaveLength(1);
+    expect(result[0].progress).toBe(593);
+    expect(result[0].sourceMap.rapid).toBe(payload.sourceUrl);
   });
 });

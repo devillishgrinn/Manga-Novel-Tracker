@@ -1,16 +1,16 @@
-
 import { loadEntries, saveEntries, upsertEntry } from "./core/storage.js"
 import { TrackerPayload } from "./core/models"
 
-console.log("🔥 Manga/Novel Tracker background...")
+console.log("Manga/Novel Tracker background loaded")
+
 const GENERIC_COVER_PATH_REGEX =
-  /\/images\/(?:og-image|logo|svg\/logo|default_nato|404-avatar|no-avatar)/i;
-const MANGA_CDN_REFERER_RULE_IDS = [91001, 91002, 91003];
-const MANGA_REFERER = "https://www.manganato.gg/";
+  /\/(?:images\/(?:og-image|logo|svg\/logo|default_nato|404-avatar|no-avatar)|favicon|icon|logo|avatar|default|placeholder|no-cover)/i
+const MANGA_CDN_REFERER_RULE_IDS = [91001, 91002, 91003]
+const MANGA_REFERER = "https://www.manganato.gg/"
 
 async function ensureMangaCdnRefererRules(): Promise<void> {
   if (!chrome.declarativeNetRequest?.updateDynamicRules) {
-    return;
+    return
   }
 
   try {
@@ -57,42 +57,101 @@ async function ensureMangaCdnRefererRules(): Promise<void> {
           },
         },
       ],
-    });
+    })
   } catch (err) {
-    console.error("❌ Failed to set manga CDN header rules:", err);
+    console.error("Failed to set manga CDN header rules:", err)
   }
 }
 
 function isUsableCoverUrl(url: string, seriesUrl: string): boolean {
   try {
-    const resolved = new URL(url);
-    const seriesOrigin = new URL(seriesUrl).origin;
+    const resolved = new URL(url)
+    const seriesOrigin = new URL(seriesUrl).origin
+    const isImageLike =
+      /\.(?:png|jpe?g|webp|avif|gif)$/i.test(resolved.pathname) ||
+      /\/assets\/public\/series_covers\//i.test(resolved.pathname)
+
+    if (!isImageLike || /\.(?:svg|ico)$/i.test(resolved.pathname)) {
+      return false
+    }
     if (resolved.origin === seriesOrigin && GENERIC_COVER_PATH_REGEX.test(resolved.pathname)) {
-      return false;
+      return false
+    }
+    if (GENERIC_COVER_PATH_REGEX.test(resolved.pathname)) {
+      return false
     }
 
-    return true;
+    return true
   } catch {
-    return false;
+    return false
   }
+}
+
+function resolveCoverUrl(rawUrl: string, seriesUrl: string): string | null {
+  try {
+    return new URL(rawUrl, seriesUrl).href
+  } catch {
+    return null
+  }
+}
+
+function extractCoverFromHtml(html: string, seriesUrl: string): string | null {
+  const patterns = [
+    /<meta[^>]+(?:property|name)=["']og:image["'][^>]+content=["']([^"']+)["'][^>]*>/i,
+    /<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']og:image["'][^>]*>/i,
+    /<meta[^>]+(?:property|name)=["']og:image:url["'][^>]+content=["']([^"']+)["'][^>]*>/i,
+    /<meta[^>]+(?:property|name)=["']twitter:image["'][^>]+content=["']([^"']+)["'][^>]*>/i,
+    /<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']twitter:image["'][^>]*>/i,
+    /<link[^>]+rel=["']image_src["'][^>]+href=["']([^"']+)["'][^>]*>/i,
+    /<img[^>]+class=["'][^"']*(cover|poster|thumb|summary|series)[^"']*["'][^>]+src=["']([^"']+)["'][^>]*>/i,
+    /<img[^>]+src=["']([^"']+)["'][^>]+class=["'][^"']*(cover|poster|thumb|summary|series)[^"']*["'][^>]*>/i,
+    /<img[^>]+class=["'][^"']*(cover|poster|thumb|summary|series)[^"']*["'][^>]+(?:data-src|data-original|data-lazy-src)=["']([^"']+)["'][^>]*>/i,
+    /<img[^>]+(?:data-src|data-original|data-lazy-src)=["']([^"']+)["'][^>]+class=["'][^"']*(cover|poster|thumb|summary|series)[^"']*["'][^>]*>/i,
+    /seriesCoverUrlFromAstro":"([^"\\]+)"/i,
+    /"series_cover_url":"([^"\\]+)"/i,
+    /"cover_url":"([^"\\]+)"/i,
+  ]
+
+  for (const pattern of patterns) {
+    const match = html.match(pattern)
+    if (!match) {
+      continue
+    }
+
+    const rawCover = match[2] || match[1]
+    if (!rawCover) {
+      continue
+    }
+
+    const resolvedCover = resolveCoverUrl(rawCover, seriesUrl)
+    if (!resolvedCover) {
+      continue
+    }
+
+    if (isUsableCoverUrl(resolvedCover, seriesUrl)) {
+      return resolvedCover
+    }
+  }
+
+  return null
 }
 
 if (chrome.runtime?.onInstalled?.addListener) {
   chrome.runtime.onInstalled.addListener(() => {
-    void ensureMangaCdnRefererRules();
-  });
+    void ensureMangaCdnRefererRules()
+  })
 }
 
 if (chrome.runtime?.onStartup?.addListener) {
   chrome.runtime.onStartup.addListener(() => {
-    void ensureMangaCdnRefererRules();
-  });
+    void ensureMangaCdnRefererRules()
+  })
 }
 
-void ensureMangaCdnRefererRules();
+void ensureMangaCdnRefererRules()
 
 chrome.runtime.onMessage.addListener((message) => {
-  console.log("📨 Message received:", message)
+  console.log("Message received:", message)
 
   if (message.type === "TRACK_PROGRESS") {
     handleTrack(message.payload)
@@ -100,33 +159,27 @@ chrome.runtime.onMessage.addListener((message) => {
 })
 
 async function handleTrack(payload: TrackerPayload) {
-  
-  // ✨ SMART FETCH: If we have a Series URL but NO cover (like on Fenrir), fetch it!
-  if (!payload.coverUrl && payload.seriesUrl) {
-    try {
-      console.log("🔍 Fetching missing cover from:", payload.seriesUrl);
-      const response = await fetch(payload.seriesUrl);
-      const html = await response.text();
+  const shouldFetchCover =
+    Boolean(payload.seriesUrl) &&
+    (!payload.coverUrl || !isUsableCoverUrl(payload.coverUrl, payload.seriesUrl!))
 
-      // Find og:image in the fetched HTML
-      const match = html.match(/meta\s+property=["']og:image["']\s+content=["'](.*?)["']/i);
-      
-      if (match && match[1]) {
-        let foundCover = match[1];
-        // Ensure absolute URL
-        if (!foundCover.startsWith('http')) {
-            const origin = new URL(payload.seriesUrl).origin;
-            foundCover = new URL(foundCover, origin).href;
-        }
-        if (isUsableCoverUrl(foundCover, payload.seriesUrl)) {
-          console.log("📸 Background fetch success:", foundCover);
-          payload.coverUrl = foundCover;
-        }
+  // Try series-page fetch when cover is missing or appears generic.
+  if (shouldFetchCover && payload.seriesUrl) {
+    try {
+      console.log("Fetching missing cover from:", payload.seriesUrl)
+      const response = await fetch(payload.seriesUrl)
+      const html = await response.text()
+
+      const foundCover = extractCoverFromHtml(html, payload.seriesUrl)
+      if (foundCover) {
+        console.log("Background fetch success:", foundCover)
+        payload.coverUrl = foundCover
       }
     } catch (err) {
-      console.error("❌ Background fetch failed:", err);
+      console.error("Background fetch failed:", err)
     }
   }
+
   const entries = await loadEntries()
   const updated = upsertEntry(entries, payload, payload.siteId)
   await saveEntries(updated)

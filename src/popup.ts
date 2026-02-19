@@ -1,11 +1,30 @@
 import { loadEntries, saveEntries } from "./core/storage";
 import { TrackerEntry } from "./core/models";
+import { AnalyzeCurrentPageResponse, PageAnalysis } from "./core/messages";
 
 console.log("Popup script loaded");
 
 const list = document.getElementById("list")!;
 const mediaToggle = document.getElementById("mediaToggle");
 const mediaTogglePill = mediaToggle?.querySelector<HTMLElement>(".media-toggle-pill");
+const detectedPanel = document.getElementById("detectedPanel");
+
+const SITE_RULES_KEY = "siteAutoTrackRules";
+const LEGACY_DOMAIN_RULES_KEY = "domainAutoTrackRules";
+const DEFAULT_MIN_CONFIDENCE = 80;
+const LOCAL_COVER_FALLBACK =
+    "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='50' height='70' viewBox='0 0 50 70'%3E%3Crect width='50' height='70' fill='%23101622'/%3E%3Crect x='1' y='1' width='48' height='68' fill='none' stroke='%23364763'/%3E%3Ctext x='25' y='38' fill='%2397abcf' font-size='8' text-anchor='middle' font-family='Segoe UI,sans-serif'%3ENo Cover%3C/text%3E%3C/svg%3E";
+const SITE_ID_ALIASES: Record<string, string> = {
+    asuracomic: "asurascans",
+    asurascans: "asurascans",
+    mangakakalot: "manganato",
+    manganato: "manganato",
+    fenrirealm: "fenrirealm",
+    helioscans: "helioscans",
+    novelbin: "novelbin",
+    rapid: "rapid",
+    manhuaus: "manhuaus",
+};
 
 type MediaFilter = "manga" | "novel";
 
@@ -16,9 +35,13 @@ type SiteGroup = {
 
 let activeMediaFilter: MediaFilter = "manga";
 let cachedEntries: TrackerEntry[] = [];
+let detectedAnalysis: PageAnalysis | null = null;
+let detectedHostname: string | null = null;
+let detectedSiteKey: string | null = null;
 
 setupMediaToggle();
 refreshList();
+void detectCurrentPage();
 
 function isMediaFilter(value: string): value is MediaFilter {
     return value === "manga" || value === "novel";
@@ -36,6 +59,7 @@ function setupMediaToggle() {
         activeMediaFilter = media;
         syncMediaToggleState();
         renderFilteredEntries();
+        renderDetectionPanelForActiveFilter();
     });
     });
 
@@ -70,14 +94,288 @@ async function refreshList() {
     renderFilteredEntries();
 }
 
+function normalizeHostname(hostname: string): string {
+    return hostname.replace(/^www\./i, "").toLowerCase();
+}
+
+function normalizeSiteToken(value: string): string {
+    return value
+        .toLowerCase()
+        .replace(/^https?:\/\//i, "")
+        .replace(/^www\./i, "")
+        .split(/[/?#]/)[0]
+        .split(".")[0]
+        .replace(/[^a-z0-9]+/g, "");
+}
+
+function normalizeRuleKey(key: string): string {
+    return normalizeHostname(key);
+}
+
+function looksLikeHostname(value: string): boolean {
+    return value.includes(".");
+}
+
+function canonicalizeSiteId(siteId: string, sourceUrl?: string): string {
+    const tokenFromSiteId = normalizeSiteToken(siteId);
+    if (SITE_ID_ALIASES[tokenFromSiteId]) {
+        return SITE_ID_ALIASES[tokenFromSiteId];
+    }
+
+    if (sourceUrl) {
+        try {
+            const hostToken = normalizeSiteToken(new URL(sourceUrl).hostname);
+            if (SITE_ID_ALIASES[hostToken]) {
+                return SITE_ID_ALIASES[hostToken];
+            }
+        } catch {
+            // Ignore URL parse failures.
+        }
+    }
+
+    return normalizeHostname(siteId);
+}
+
+function formatConfidence(confidence: number): string {
+    const safe = Math.max(0, Math.min(100, Math.round(confidence)));
+    return `${safe}% confidence`;
+}
+
+function getSuggestedMinConfidence(confidence: number): number {
+    if (confidence >= 95) return 90;
+    if (confidence >= 85) return 80;
+    return DEFAULT_MIN_CONFIDENCE;
+}
+
+async function loadSiteRules(): Promise<Record<string, { autoTrack: boolean; minConfidence: number }>> {
+    if (!chrome.storage?.local?.get) {
+        return {};
+    }
+
+    const result = await chrome.storage.local.get([SITE_RULES_KEY, LEGACY_DOMAIN_RULES_KEY]);
+    const rules = result[SITE_RULES_KEY] || result[LEGACY_DOMAIN_RULES_KEY];
+
+    if (!rules || typeof rules !== "object") {
+        return {};
+    }
+
+    return rules as Record<string, { autoTrack: boolean; minConfidence: number }>;
+}
+
+async function saveSiteRule(siteKey: string, minConfidence: number): Promise<void> {
+    if (!chrome.storage?.local?.set) {
+        return;
+    }
+
+    const rules = await loadSiteRules();
+    const normalized = normalizeRuleKey(siteKey);
+    rules[normalized] = {
+        autoTrack: true,
+        minConfidence,
+    };
+
+    await chrome.storage.local.set({ [SITE_RULES_KEY]: rules });
+}
+
+async function removeSiteRule(siteKey: string, legacyHostname?: string | null): Promise<void> {
+    if (!chrome.storage?.local?.set) {
+        return;
+    }
+
+    const rules = await loadSiteRules();
+    const normalized = normalizeRuleKey(siteKey);
+    const legacyNormalized = legacyHostname ? normalizeRuleKey(legacyHostname) : null;
+    if (!(normalized in rules) && (!legacyNormalized || !(legacyNormalized in rules))) {
+        return;
+    }
+
+    delete rules[normalized];
+    if (legacyNormalized) {
+        delete rules[legacyNormalized];
+    }
+    await chrome.storage.local.set({ [SITE_RULES_KEY]: rules });
+}
+
+async function isSiteAutoTracked(siteKey: string, legacyHostname?: string | null): Promise<boolean> {
+    const rules = await loadSiteRules();
+    const normalized = normalizeRuleKey(siteKey);
+    if (rules[normalized]?.autoTrack) {
+        return true;
+    }
+
+    if (legacyHostname) {
+        const legacyNormalized = normalizeRuleKey(legacyHostname);
+        return Boolean(rules[legacyNormalized]?.autoTrack);
+    }
+
+    return false;
+}
+
+function hideDetectionPanel(clearState = false): void {
+    if (!detectedPanel) return;
+
+    detectedPanel.classList.add("hidden");
+    detectedPanel.innerHTML = "";
+
+    if (clearState) {
+        detectedAnalysis = null;
+        detectedHostname = null;
+        detectedSiteKey = null;
+    }
+}
+
+function renderDetectionPanelForActiveFilter(): void {
+    if (!detectedAnalysis) {
+        hideDetectionPanel();
+        return;
+    }
+
+    if (detectedAnalysis.payload.mediaType !== activeMediaFilter) {
+        hideDetectionPanel();
+        return;
+    }
+
+    renderDetectionPanel(detectedAnalysis);
+}
+
+function resolveDisplayCover(coverUrl: string | undefined): string {
+    if (!coverUrl || !coverUrl.trim()) {
+        return LOCAL_COVER_FALLBACK;
+    }
+
+    try {
+        const resolved = new URL(coverUrl);
+        if (resolved.protocol === "http:" || resolved.protocol === "https:") {
+            return resolved.href;
+        }
+    } catch {
+        // Ignore and fall through.
+    }
+
+    return LOCAL_COVER_FALLBACK;
+}
+
+function renderDetectionPanel(analysis: PageAnalysis): void {
+    if (!detectedPanel) return;
+
+    const chapterText = formatChapter(analysis.payload.progress);
+    const previewCover = resolveDisplayCover(analysis.payload.coverUrl);
+    const siteKey = canonicalizeSiteId(
+        detectedSiteKey || analysis.payload.siteId || detectedHostname || "site",
+    );
+    const siteLabel = looksLikeHostname(siteKey) ? siteKey : formatSiteName(siteKey);
+    detectedPanel.classList.remove("hidden");
+    detectedPanel.innerHTML = `
+        <div class="detected-preview">
+            <img class="detected-cover-img" src="${previewCover}" data-fallback-src="${LOCAL_COVER_FALLBACK}" alt="${analysis.payload.title} cover" />
+            <div class="detected-copy">
+                <div class="detected-title">${analysis.payload.title}</div>
+                <div class="detected-meta">Detected chapter ${chapterText} - ${formatConfidence(analysis.confidence)}</div>
+            </div>
+        </div>
+        <div class="detected-actions">
+            <button type="button" class="btn-track" id="detectedTrackBtn">Add To Tracker</button>
+            <label class="detected-autotrack">
+                <input type="checkbox" id="detectedAutoTrackCheck" />
+                Always auto-track this site (${siteLabel})
+            </label>
+            <span class="detected-status" id="detectedStatus"></span>
+        </div>
+    `;
+
+    const addButton = detectedPanel.querySelector<HTMLButtonElement>("#detectedTrackBtn");
+    const autoTrackCheck = detectedPanel.querySelector<HTMLInputElement>("#detectedAutoTrackCheck");
+    const status = detectedPanel.querySelector<HTMLElement>("#detectedStatus");
+    const previewImg = detectedPanel.querySelector<HTMLImageElement>(".detected-cover-img");
+
+    if (autoTrackCheck) {
+        void (async () => {
+            autoTrackCheck.checked = await isSiteAutoTracked(siteKey, detectedHostname);
+        })();
+    }
+
+    previewImg?.addEventListener("error", () => {
+        const fallback = previewImg.dataset.fallbackSrc || LOCAL_COVER_FALLBACK;
+        if (previewImg.src !== fallback) {
+            previewImg.src = fallback;
+        }
+    });
+
+    addButton?.addEventListener("click", async () => {
+        if (!detectedAnalysis) return;
+
+        chrome.runtime?.sendMessage?.({
+            type: "TRACK_PROGRESS",
+            payload: detectedAnalysis.payload,
+        });
+
+        if (siteKey) {
+            if (autoTrackCheck?.checked) {
+                await saveSiteRule(
+                    siteKey,
+                    getSuggestedMinConfidence(detectedAnalysis.confidence),
+                );
+            } else {
+                await removeSiteRule(siteKey, detectedHostname);
+            }
+        }
+
+        if (status) {
+            status.textContent = "Added";
+        }
+
+        await refreshList();
+    });
+}
+
+async function detectCurrentPage(): Promise<void> {
+    if (!detectedPanel) return;
+    if (!chrome.tabs?.query || !chrome.tabs?.sendMessage) {
+        hideDetectionPanel(true);
+        return;
+    }
+
+    try {
+        const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+        const activeTab = tabs[0];
+
+        if (!activeTab?.id || !activeTab.url || !/^https?:\/\//i.test(activeTab.url)) {
+            hideDetectionPanel(true);
+            return;
+        }
+
+        const response = (await chrome.tabs.sendMessage(activeTab.id, {
+            type: "ANALYZE_CURRENT_PAGE",
+        })) as AnalyzeCurrentPageResponse | undefined;
+
+        if (!response?.detected || !response.analysis) {
+            hideDetectionPanel(true);
+            return;
+        }
+
+        detectedAnalysis = response.analysis;
+        detectedHostname =
+            response.hostname ||
+            normalizeHostname(new URL(activeTab.url).hostname);
+        detectedSiteKey =
+            response.siteKey ||
+            response.analysis.payload.siteId ||
+            detectedHostname;
+        renderDetectionPanelForActiveFilter();
+    } catch {
+        hideDetectionPanel(true);
+    }
+}
+
 function formatSiteName(siteId: string): string {
-  // Add custom formatting for specific sites here
     if (siteId === "helioscans") return "HelioScans";
     if (siteId === "fenrirealm") return "Fenrir Realm";
     if (siteId === "asurascans") return "Asura Scans";
     if (siteId === "manganato") return "MangaNato";
-
-  // Default: Capitalize first letter (e.g. "manganato" -> "Manganato")
+    if (siteId === "novelbin") return "NovelBin";
+    if (siteId === "rapid") return "RAPID";
+    if (siteId === "manhuaus") return "Manhuaus";
+    if (looksLikeHostname(siteId)) return siteId;
     return siteId.charAt(0).toUpperCase() + siteId.slice(1);
 }
 
@@ -86,14 +384,34 @@ function getSiteMonogram(siteId: string): string {
     if (siteId === "fenrirealm") return "FR";
     if (siteId === "helioscans") return "HS";
     if (siteId === "manganato") return "MN";
+    if (siteId === "novelbin") return "NB";
+    if (siteId === "rapid") return "RP";
     return siteId.slice(0, 2).toUpperCase();
 }
 
-function getSiteLogoUrl(siteId: string): string | null {
+function getSiteLogoUrl(siteId: string, sampleSourceUrl?: string): string | null {
     if (siteId === "asurascans") return "https://asuracomic.net/images/logo.webp";
     if (siteId === "fenrirealm") return "https://fenrirealm.com/img/favicon/favicon-32x32.png";
     if (siteId === "helioscans") return "https://cdn.meowing.org/uploads/_9FxZ8P7Tik";
     if (siteId === "manganato") return "https://www.manganato.gg/images/logo-manganato.webp";
+    if (siteId === "novelbin") return "https://novelbin.com/favicon.ico";
+    if (siteId === "rapid" && sampleSourceUrl) {
+        try {
+            return new URL("/favicon.svg", sampleSourceUrl).href;
+        } catch {
+            // Fall back to generic favicon resolver.
+        }
+    }
+
+    if (sampleSourceUrl) {
+        try {
+            const host = new URL(sampleSourceUrl).hostname;
+            return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=64`;
+        } catch {
+            return null;
+        }
+    }
+
     return null;
 }
 
@@ -109,11 +427,26 @@ function getSiteCoverFallback(siteId: string, sourceUrl?: string): string {
     return "https://www.manganato.gg/images/default_nato.webp";
     }
 
-    return "https://via.placeholder.com/50x70?text=No+Img";
+    return LOCAL_COVER_FALLBACK;
+}
+
+function getPrimarySource(entry: TrackerEntry): { siteId: string; sourceUrl: string } | null {
+    const sourceEntries = Object.entries(entry.sourceMap);
+    if (sourceEntries.length === 0) {
+        return null;
+    }
+
+    const normalizedSources = sourceEntries.map(([rawSiteId, sourceUrl]) => ({
+        siteId: canonicalizeSiteId(rawSiteId, sourceUrl),
+        sourceUrl,
+    }));
+
+    const preferred = normalizedSources.find((source) => !looksLikeHostname(source.siteId));
+    return preferred || normalizedSources[0];
 }
 
 function getPrimarySiteId(entry: TrackerEntry): string {
-    return Object.keys(entry.sourceMap)[0] || "unknown";
+    return getPrimarySource(entry)?.siteId || "unknown";
 }
 
 function formatChapter(progress: number): string {
@@ -172,10 +505,9 @@ function rewriteChapterUrl(siteId: string, currentUrl: string, chapter: number):
 }
 
 function getPrimaryChapterUrl(entry: TrackerEntry): string {
-    const siteId = getPrimarySiteId(entry);
-    const sourceUrl = entry.sourceMap[siteId];
-    if (!sourceUrl) return "#";
-    return rewriteChapterUrl(siteId, sourceUrl, entry.progress);
+    const primary = getPrimarySource(entry);
+    if (!primary) return "#";
+    return rewriteChapterUrl(primary.siteId, primary.sourceUrl, entry.progress);
 }
 
 function updateEntryChapterUrls(entry: TrackerEntry): void {
@@ -219,7 +551,8 @@ function render(entries: TrackerEntry[]) {
 
     groups.forEach((group) => {
     const siteName = formatSiteName(group.siteId);
-    const siteLogoUrl = getSiteLogoUrl(group.siteId);
+    const sampleSourceUrl = getPrimarySource(group.entries[0])?.sourceUrl;
+    const siteLogoUrl = getSiteLogoUrl(group.siteId, sampleSourceUrl);
     const siteMonogram = getSiteMonogram(group.siteId);
     const section = document.createElement("section");
     section.className = `site-section site-${group.siteId}`;
@@ -284,14 +617,14 @@ function render(entries: TrackerEntry[]) {
 
         const coverImg = div.querySelector(".cover-img") as HTMLImageElement;
         coverImg.addEventListener("error", () => {
-        const fallback = coverImg.dataset.fallbackSrc || "https://via.placeholder.com/50x70?text=No+Img";
+        const fallback = coverImg.dataset.fallbackSrc || LOCAL_COVER_FALLBACK;
         if (coverImg.src !== fallback) {
             coverImg.src = fallback;
             return;
         }
 
-        if (fallback !== "https://via.placeholder.com/50x70?text=No+Img") {
-            coverImg.src = "https://via.placeholder.com/50x70?text=No+Img";
+        if (fallback !== LOCAL_COVER_FALLBACK) {
+            coverImg.src = LOCAL_COVER_FALLBACK;
         }
         });
         coverImg.addEventListener("click", () => {
