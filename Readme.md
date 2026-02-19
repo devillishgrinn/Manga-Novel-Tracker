@@ -26,6 +26,8 @@ A Manifest V3 Chrome extension that automatically tracks your reading progress o
 - MangaNato / MangaKakalot
   - `manganato.gg`
   - `mangakakalot.gg`
+- NovelBin
+  - `novelbin.com`
 
 ## Tech Stack
 

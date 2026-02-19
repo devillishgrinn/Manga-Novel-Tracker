@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Manga/Novel Tracker",
   "version": "0.1.0",
-  "permissions": ["storage", "declarativeNetRequestWithHostAccess"],
+  "permissions": ["storage", "tabs", "activeTab", "declarativeNetRequestWithHostAccess"],
   "host_permissions": [
     "https://fenrirealm.com/*",
     "https://www.fenrirealm.com/*",
@@ -16,6 +16,8 @@
     "https://www.manganato.gg/*",
     "https://mangakakalot.gg/*",
     "https://www.mangakakalot.gg/*",
+    "https://novelbin.com/*",
+    "https://www.novelbin.com/*",
     "https://img-r1.2xstorage.com/*",
     "https://imgs-2.2xstorage.com/*",
     "https://storage.waitst.com/*"
@@ -27,6 +29,8 @@
   "content_scripts": [
     {
       "matches": [
+        "https://*/*",
+        "http://*/*",
         "https://fenrirealm.com/series/*",
         "https://www.fenrirealm.com/series/*",
         "https://helioscans.com/*",
