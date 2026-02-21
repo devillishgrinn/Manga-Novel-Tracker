@@ -114,6 +114,16 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           confidence: 100,
           reasons: ["known site adapter matched this page"],
           detectedBy: "adapter",
+          extractionSources: {
+            title: [`adapter:${adapterPayload.siteId}:payload.title`],
+            cover: adapterPayload.coverUrl
+              ? [`adapter:${adapterPayload.siteId}:payload.coverUrl`]
+              : [`adapter:${adapterPayload.siteId}:no cover provided`],
+            selectedTitle: `adapter:${adapterPayload.siteId}:payload.title`,
+            selectedCover: adapterPayload.coverUrl
+              ? `adapter:${adapterPayload.siteId}:payload.coverUrl`
+              : undefined,
+          },
         },
       };
     } else {

@@ -106,4 +106,21 @@ describe("analyzeCurrentPage", () => {
       "https://t87p34ahr7i09lm.live/series/dragonslayers-class-regression",
     );
   });
+
+  it("ignores chapter-only headings and keeps series slug as title", () => {
+    const result = analyzeCurrentPage(
+      "https://reader.example.com/series/alpha-story/chapter-12",
+      createDoc({
+        title: "Chapter 12",
+        body: { innerText: "Chapter 12 content" },
+        querySelector: vi.fn((selector: string) => {
+          if (selector === "h1") return { textContent: "Chapter 12" };
+          return null;
+        }) as DocStub["querySelector"],
+      }),
+    );
+
+    expect(result).not.toBeNull();
+    expect(result?.payload.title).toBe("Alpha Story");
+  });
 });

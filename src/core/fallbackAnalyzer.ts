@@ -4,6 +4,12 @@ export interface FallbackAnalysis {
   payload: TrackerPayload;
   confidence: number;
   reasons: string[];
+  extractionSources?: {
+    title: string[];
+    cover: string[];
+    selectedTitle?: string;
+    selectedCover?: string;
+  };
 }
 
 const CHAPTER_TOKEN_REGEX = /(\d+(?:[._-]\d+)?)/;
@@ -14,7 +20,7 @@ const CHAPTER_PATTERNS = [
 const TITLE_CHAPTER_SUFFIX_REGEX = /\s*[-|:]\s*(chapter|chap|ch)\.?\s*\d+(?:[._-]\d+)?\b.*$/i;
 const TITLE_CHAPTER_PREFIX_REGEX = /^(chapter|chap|ch)\.?\s*\d+(?:[._-]\d+)?\s*[-|:]\s*/i;
 const GENERIC_TITLE_REGEX =
-  /^(report\s+a\s+bug|unlock\s+chapter|account|profile|home|library|roadmap|explore|sign\s*in|log\s*in|register|search|menu|notices?)$/i;
+  /^(report\s+a\s+bug|unlock\s+chapter|account|profile|home|library|roadmap|explore|sign\s*in|log\s*in|register|search|menu|notices?|chapter\s*\d+(?:[._-]\d+)?|ch\.?\s*\d+(?:[._-]\d+)?)$/i;
 const GENERIC_COVER_PATH_REGEX = /\/(?:favicon|logo|icon|avatar|default|placeholder|no-cover|no_avatar|og-image)/i;
 const SITE_TOKEN_ALIASES: Record<string, string> = {
   asurascans: "asurascans",
@@ -32,6 +38,19 @@ type SiteIdentity = {
   siteId: string;
   siteName?: string;
 };
+
+type PatternSource = {
+  label: string;
+  pattern: RegExp;
+};
+
+function formatSourceValue(value: string): string {
+  const normalized = normalizeWhitespace(value);
+  if (normalized.length <= 120) {
+    return normalized;
+  }
+  return `${normalized.slice(0, 117)}...`;
+}
 
 function parseChapterValue(raw: string): number | null {
   const normalized = raw.replace(/[_-]/g, ".");
@@ -116,17 +135,24 @@ function getDocumentHtml(doc: Document): string {
   return doc.documentElement?.outerHTML || "";
 }
 
-function extractEmbeddedValue(doc: Document, patterns: RegExp[]): string | null {
+function extractEmbeddedValue(
+  doc: Document,
+  patterns: PatternSource[],
+  trace?: string[],
+): { value: string; source: string } | null {
   const html = getDocumentHtml(doc);
   if (!html) {
     return null;
   }
 
-  for (const pattern of patterns) {
+  for (const { label, pattern } of patterns) {
     const match = html.match(pattern);
     const value = match?.[1]?.trim();
+    if (trace) {
+      trace.push(`${label}: ${value ? formatSourceValue(value) : "no match"}`);
+    }
     if (value) {
-      return value;
+      return { value, source: label };
     }
   }
 
@@ -139,6 +165,10 @@ function sanitizeTitleCandidate(raw: string, siteName?: string): string | null {
   }
 
   let title = normalizeWhitespace(normalizeTitle(raw));
+  title = title
+    .replace(/^read\s+/i, "")
+    .replace(/\s*[\-|:]\s*(read|online|for free).*$/i, "")
+    .trim();
   if (!title) {
     return null;
   }
@@ -156,6 +186,51 @@ function sanitizeTitleCandidate(raw: string, siteName?: string): string | null {
   }
 
   return title;
+}
+
+function extractJsonLdValues(doc: Document, key: "name" | "image"): string[] {
+  if (typeof doc.querySelectorAll !== "function") {
+    return [];
+  }
+
+  const blocks = Array.from(
+    doc.querySelectorAll('script[type="application/ld+json"]'),
+  );
+  const results: string[] = [];
+
+  const visit = (value: unknown): void => {
+    if (!value) return;
+    if (Array.isArray(value)) {
+      value.forEach(visit);
+      return;
+    }
+    if (typeof value === "object") {
+      const record = value as Record<string, unknown>;
+      const direct = record[key];
+      if (typeof direct === "string") {
+        results.push(direct);
+      } else if (Array.isArray(direct)) {
+        direct.forEach((item) => {
+          if (typeof item === "string") {
+            results.push(item);
+          }
+        });
+      }
+      Object.values(record).forEach(visit);
+    }
+  };
+
+  blocks.forEach((block) => {
+    const text = block.textContent?.trim();
+    if (!text) return;
+    try {
+      visit(JSON.parse(text));
+    } catch {
+      // Ignore malformed JSON-LD blocks.
+    }
+  });
+
+  return results;
 }
 
 function slugToTitle(slug: string): string {
@@ -225,16 +300,54 @@ function extractSiteIdentity(url: URL, doc: Document): SiteIdentity {
   };
 }
 
-function extractTitle(url: URL, doc: Document, siteIdentity: SiteIdentity): { title: string; reason: string } | null {
-  const scriptedSeriesName = extractEmbeddedValue(doc, [
-    /seriesNameFromAstro":"([^"\\]+)"/i,
-    /"series_name":"([^"\\]+)"/i,
-    /"seriesTitle":"([^"\\]+)"/i,
-  ]);
+function extractTitle(
+  url: URL,
+  doc: Document,
+  siteIdentity: SiteIdentity,
+  trace: string[],
+): { title: string; reason: string; source: string } | null {
+  const scriptedSeriesName = extractEmbeddedValue(
+    doc,
+    [
+      { label: "embedded:seriesNameFromAstro", pattern: /seriesNameFromAstro":"([^"\\]+)"/i },
+      { label: "embedded:seriesNameFromAstro(escaped)", pattern: /seriesNameFromAstro\\":\\"([^"\\]+)\\"/i },
+      { label: "embedded:series_name(json)", pattern: /"series_name":"([^"\\]+)"/i },
+      { label: "embedded:series_name(escaped)", pattern: /series_name\\":\\"([^"\\]+)\\"/i },
+      { label: "embedded:seriesTitle(json)", pattern: /"seriesTitle":"([^"\\]+)"/i },
+      { label: "embedded:seriesTitle(escaped)", pattern: /seriesTitle\\":\\"([^"\\]+)\\"/i },
+      { label: "embedded:series_name(object)", pattern: /series_name\s*:\s*["']([^"']+)["']/i },
+    ],
+    trace,
+  );
   if (scriptedSeriesName) {
-    const sanitized = sanitizeTitleCandidate(scriptedSeriesName, siteIdentity.siteName);
+    const sanitized = sanitizeTitleCandidate(scriptedSeriesName.value, siteIdentity.siteName);
+    trace.push(
+      `selected:${scriptedSeriesName.source} => ${sanitized ? formatSourceValue(sanitized) : "rejected as generic"}`,
+    );
     if (sanitized) {
-      return { title: sanitized, reason: "title detected from embedded page data" };
+      return {
+        title: sanitized,
+        reason: "title detected from embedded page data",
+        source: scriptedSeriesName.source,
+      };
+    }
+  }
+
+  const jsonLdTitles = extractJsonLdValues(doc, "name");
+  if (jsonLdTitles.length === 0) {
+    trace.push("json-ld:name: no match");
+  }
+  for (let i = 0; i < jsonLdTitles.length; i += 1) {
+    const value = jsonLdTitles[i];
+    trace.push(`json-ld:name[${i + 1}]: ${formatSourceValue(value)}`);
+    const sanitized = sanitizeTitleCandidate(value, siteIdentity.siteName);
+    if (sanitized) {
+      trace.push(`selected:json-ld:name[${i + 1}] => ${formatSourceValue(sanitized)}`);
+      return {
+        title: sanitized,
+        reason: "title detected from JSON-LD metadata",
+        source: `json-ld:name[${i + 1}]`,
+      };
     }
   }
 
@@ -247,48 +360,66 @@ function extractTitle(url: URL, doc: Document, siteIdentity: SiteIdentity): { ti
     "h1",
   ];
   for (const selector of headingSelectors) {
-    const heading = doc.querySelector(selector)?.textContent?.trim();
+    const heading = doc.querySelector(selector)?.textContent?.trim() || "";
+    trace.push(`${selector}: ${heading ? formatSourceValue(heading) : "no match"}`);
     if (!heading) {
       continue;
     }
 
     const sanitized = sanitizeTitleCandidate(heading, siteIdentity.siteName);
     if (sanitized) {
-      return { title: sanitized, reason: "title detected from page heading" };
+      trace.push(`selected:${selector} => ${formatSourceValue(sanitized)}`);
+      return { title: sanitized, reason: "title detected from page heading", source: selector };
     }
   }
 
   const ogTitle = getMetaContent(doc, 'meta[property="og:title"]');
+  trace.push(`meta:og:title: ${ogTitle ? formatSourceValue(ogTitle) : "no match"}`);
   if (ogTitle) {
     const sanitized = sanitizeTitleCandidate(ogTitle, siteIdentity.siteName);
     if (sanitized) {
-      return { title: sanitized, reason: "title detected from og:title" };
+      trace.push(`selected:meta:og:title => ${formatSourceValue(sanitized)}`);
+      return { title: sanitized, reason: "title detected from og:title", source: "meta:og:title" };
     }
   }
 
   const twitterTitle = getMetaContent(doc, 'meta[name="twitter:title"]');
+  trace.push(`meta:twitter:title: ${twitterTitle ? formatSourceValue(twitterTitle) : "no match"}`);
   if (twitterTitle) {
     const sanitized = sanitizeTitleCandidate(twitterTitle, siteIdentity.siteName);
     if (sanitized) {
-      return { title: sanitized, reason: "title detected from twitter:title" };
+      trace.push(`selected:meta:twitter:title => ${formatSourceValue(sanitized)}`);
+      return {
+        title: sanitized,
+        reason: "title detected from twitter:title",
+        source: "meta:twitter:title",
+      };
     }
   }
 
   const fromUrl = inferTitleFromUrl(url);
+  trace.push(`url:slug: ${fromUrl ? formatSourceValue(fromUrl) : "no match"}`);
   if (fromUrl) {
     const sanitized = sanitizeTitleCandidate(fromUrl, siteIdentity.siteName);
     if (sanitized) {
-      return { title: sanitized, reason: "title inferred from URL slug" };
+      trace.push(`selected:url:slug => ${formatSourceValue(sanitized)}`);
+      return { title: sanitized, reason: "title inferred from URL slug", source: "url:slug" };
     }
   }
 
   const fromDocTitle = sanitizeTitleCandidate(doc.title || "", siteIdentity.siteName);
+  trace.push(`document:title: ${doc.title ? formatSourceValue(doc.title) : "no match"}`);
   if (fromDocTitle) {
     const hostToken = url.hostname.replace(/^www\./i, "").split(".")[0];
     const candidate = fromDocTitle.replace(new RegExp(`\\b${hostToken}\\b`, "ig"), "").trim();
     const sanitized = sanitizeTitleCandidate(candidate, siteIdentity.siteName);
     if (sanitized) {
-      return { title: sanitized, reason: "title detected from document title" };
+      trace.push(`selected:document:title => ${formatSourceValue(sanitized)}`);
+      return {
+        title: sanitized,
+        reason: "title detected from document title",
+        source: "document:title",
+      };
     }
   }
 
@@ -329,53 +460,89 @@ function extractSeriesUrl(url: URL): string {
   return `${url.origin}/${parts.join("/")}`;
 }
 
-function extractCoverUrl(url: URL, doc: Document): string | undefined {
-  const scriptedCover = extractEmbeddedValue(doc, [
-    /seriesCoverUrlFromAstro":"([^"\\]+)"/i,
-    /"series_cover_url":"([^"\\]+)"/i,
-    /"cover_url":"([^"\\]+)"/i,
-  ]);
+function extractCoverUrl(
+  url: URL,
+  doc: Document,
+): { url?: string; source?: string; trace: string[] } {
+  const trace: string[] = [];
+  const scriptedCover = extractEmbeddedValue(
+    doc,
+    [
+      { label: "embedded:seriesCoverUrlFromAstro", pattern: /seriesCoverUrlFromAstro":"([^"\\]+)"/i },
+      {
+        label: "embedded:seriesCoverUrlFromAstro(escaped)",
+        pattern: /seriesCoverUrlFromAstro\\":\\"([^"\\]+)\\"/i,
+      },
+      { label: "embedded:series_cover_url(json)", pattern: /"series_cover_url":"([^"\\]+)"/i },
+      { label: "embedded:series_cover_url(escaped)", pattern: /series_cover_url\\":\\"([^"\\]+)\\"/i },
+      { label: "embedded:cover_url(json)", pattern: /"cover_url":"([^"\\]+)"/i },
+      { label: "embedded:cover_url(escaped)", pattern: /cover_url\\":\\"([^"\\]+)\\"/i },
+      { label: "embedded:series_cover_url(object)", pattern: /series_cover_url\s*:\s*["']([^"']+)["']/i },
+      { label: "embedded:cover_url(object)", pattern: /cover_url\s*:\s*["']([^"']+)["']/i },
+    ],
+    trace,
+  );
 
-  const candidates = [
-    scriptedCover,
-    getMetaContent(doc, 'meta[property="og:image"]'),
-    getMetaContent(doc, 'meta[property="og:image:url"]'),
-    getMetaContent(doc, 'meta[name="og:image"]'),
-    getMetaContent(doc, 'meta[name="twitter:image"]'),
-    getMetaContent(doc, 'meta[property="twitter:image"]'),
-    getMetaContent(doc, 'meta[name="twitter:image:src"]'),
-    doc.querySelector('link[rel="image_src"]')?.getAttribute("href")?.trim() || null,
-    doc.querySelector('img[itemprop="image"]')?.getAttribute("src")?.trim() || null,
-    doc.querySelector('img[class*="cover" i]')?.getAttribute("src")?.trim() || null,
-    doc.querySelector('img[class*="poster" i]')?.getAttribute("src")?.trim() || null,
-    doc.querySelector('img[class*="thumb" i]')?.getAttribute("src")?.trim() || null,
-    doc.querySelector('img[class*="summary" i]')?.getAttribute("src")?.trim() || null,
-    doc.querySelector('img[class*="cover" i]')?.getAttribute("data-src")?.trim() || null,
-    doc.querySelector('img[class*="cover" i]')?.getAttribute("data-original")?.trim() || null,
-    doc.querySelector('img[class*="poster" i]')?.getAttribute("data-src")?.trim() || null,
-    doc.querySelector('img[class*="thumb" i]')?.getAttribute("data-src")?.trim() || null,
-    doc.querySelector('img[class*="summary" i]')?.getAttribute("data-src")?.trim() || null,
+  const jsonLdImages = extractJsonLdValues(doc, "image");
+  if (jsonLdImages.length === 0) {
+    trace.push("json-ld:image: no match");
+  }
+
+  const styleCover = doc.querySelector('[style*="background-image" i]')?.getAttribute("style") || "";
+  const styleMatch = styleCover.match(/url\(["']?([^"')]+)["']?\)/i);
+
+  const candidateResolvers: Array<{ source: string; value: string | null }> = [
+    { source: scriptedCover?.source || "embedded:cover", value: scriptedCover?.value || null },
+    ...jsonLdImages.map((value, index) => ({ source: `json-ld:image[${index + 1}]`, value })),
+    { source: "meta:og:image", value: getMetaContent(doc, 'meta[property="og:image"]') },
+    { source: "meta:og:image:url", value: getMetaContent(doc, 'meta[property="og:image:url"]') },
+    { source: "meta:og:image(name)", value: getMetaContent(doc, 'meta[name="og:image"]') },
+    { source: "meta:twitter:image", value: getMetaContent(doc, 'meta[name="twitter:image"]') },
+    { source: "meta:twitter:image(property)", value: getMetaContent(doc, 'meta[property="twitter:image"]') },
+    { source: "meta:twitter:image:src", value: getMetaContent(doc, 'meta[name="twitter:image:src"]') },
+    { source: "link:image_src", value: doc.querySelector('link[rel="image_src"]')?.getAttribute("href")?.trim() || null },
+    { source: "img:itemprop=image", value: doc.querySelector('img[itemprop="image"]')?.getAttribute("src")?.trim() || null },
+    { source: "img:cover[src]", value: doc.querySelector('img[class*="cover" i]')?.getAttribute("src")?.trim() || null },
+    { source: "img:poster[src]", value: doc.querySelector('img[class*="poster" i]')?.getAttribute("src")?.trim() || null },
+    { source: "img:thumb[src]", value: doc.querySelector('img[class*="thumb" i]')?.getAttribute("src")?.trim() || null },
+    { source: "img:summary[src]", value: doc.querySelector('img[class*="summary" i]')?.getAttribute("src")?.trim() || null },
+    { source: "img:cover[data-src]", value: doc.querySelector('img[class*="cover" i]')?.getAttribute("data-src")?.trim() || null },
+    {
+      source: "img:cover[data-original]",
+      value: doc.querySelector('img[class*="cover" i]')?.getAttribute("data-original")?.trim() || null,
+    },
+    { source: "img:poster[data-src]", value: doc.querySelector('img[class*="poster" i]')?.getAttribute("data-src")?.trim() || null },
+    { source: "img:thumb[data-src]", value: doc.querySelector('img[class*="thumb" i]')?.getAttribute("data-src")?.trim() || null },
+    {
+      source: "img:summary[data-src]",
+      value: doc.querySelector('img[class*="summary" i]')?.getAttribute("data-src")?.trim() || null,
+    },
+    { source: "style:background-image", value: styleMatch?.[1] || null },
   ];
 
-  for (const rawCover of candidates) {
-    if (!rawCover) {
+  for (const candidate of candidateResolvers) {
+    if (!candidate.value) {
+      trace.push(`${candidate.source}: no match`);
       continue;
     }
 
+    trace.push(`${candidate.source}: ${formatSourceValue(candidate.value)}`);
     try {
-      const resolved = new URL(rawCover, url.href);
+      const resolved = new URL(candidate.value, url.href);
       if (
         (resolved.protocol === "http:" || resolved.protocol === "https:") &&
         !GENERIC_COVER_PATH_REGEX.test(resolved.pathname)
       ) {
-        return resolved.href;
+        trace.push(`selected:${candidate.source} => ${resolved.href}`);
+        return { url: resolved.href, source: candidate.source, trace };
       }
+      trace.push(`${candidate.source}: rejected as generic/non-http`);
     } catch {
-      continue;
+      trace.push(`${candidate.source}: invalid URL`);
     }
   }
 
-  return undefined;
+  return { trace };
 }
 
 function detectMediaType(url: URL, doc: Document): "manga" | "novel" {
@@ -441,13 +608,15 @@ export function analyzeCurrentPage(urlString: string, doc: Document): FallbackAn
   }
 
   const siteIdentity = extractSiteIdentity(url, doc);
-  const titleResult = extractTitle(url, doc, siteIdentity);
+  const titleTrace: string[] = [];
+  const titleResult = extractTitle(url, doc, siteIdentity, titleTrace);
   if (!titleResult || titleResult.title.length < 2) {
     return null;
   }
 
   const seriesUrl = extractSeriesUrl(url);
-  const coverUrl = extractCoverUrl(url, doc);
+  const coverResult = extractCoverUrl(url, doc);
+  const coverUrl = coverResult.url;
   const reasons = [titleResult.reason, chapterResult.reason];
 
   if (seriesUrl !== url.href) {
@@ -477,5 +646,11 @@ export function analyzeCurrentPage(urlString: string, doc: Document): FallbackAn
     },
     confidence: clampScore(confidence),
     reasons,
+    extractionSources: {
+      title: titleTrace,
+      cover: coverResult.trace,
+      selectedTitle: titleResult.source,
+      selectedCover: coverResult.source,
+    },
   };
 }
