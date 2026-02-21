@@ -110,6 +110,13 @@
             margin-bottom: 4px;
         }
 
+        .detected-title-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+        }
+
         .detected-preview {
             display: flex;
             align-items: center;
@@ -175,6 +182,35 @@
             font-size: 11px;
             color: #9eb3da;
             margin-bottom: 8px;
+        }
+
+        .detect-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 2px 6px;
+            border-radius: 999px;
+            font-size: 10px;
+            font-weight: 600;
+            white-space: nowrap;
+            border: 1px solid transparent;
+        }
+
+        .detect-badge--detected {
+            background: #2d3c59;
+            border-color: #49618d;
+            color: #d7e8ff;
+        }
+
+        .detect-badge--auto {
+            background: #214a34;
+            border-color: #3f8a61;
+            color: #d6ffe6;
+        }
+
+        .detect-badge--low {
+            background: #5a3f1f;
+            border-color: #9a6b2f;
+            color: #ffe8c2;
         }
 
         .detected-sources {
@@ -306,6 +342,40 @@
             align-items: baseline;
             gap: 8px;
             min-width: 0;
+            flex: 1;
+        }
+
+        .site-collapse-btn {
+            width: 22px;
+            height: 22px;
+            min-width: 22px;
+            border-radius: 999px;
+            border: 1px solid #4a5d85;
+            background: #25324a;
+            color: #dce8ff;
+            font-size: 13px;
+            line-height: 1;
+            padding: 0;
+            flex-shrink: 0;
+        }
+
+        .site-collapse-icon {
+            width: 12px;
+            height: 12px;
+            display: block;
+            transition: transform 0.18s ease;
+        }
+
+        .site-collapse-btn[aria-expanded="false"] .site-collapse-icon {
+            transform: rotate(-90deg);
+        }
+
+        .site-collapse-btn:hover {
+            background: #324468;
+        }
+
+        .site-section.collapsed .site-items {
+            display: none;
         }
 
         .site-banner-name {
@@ -405,6 +475,17 @@
 
         .chapter-value {
             color: #bbb;
+            cursor: pointer;
+        }
+
+        .chapter-input {
+            width: 58px;
+            border: 1px solid #4f658f;
+            border-radius: 4px;
+            background: #141b2a;
+            color: #e9f1ff;
+            font-size: 11px;
+            padding: 2px 4px;
         }
 
         .linked-tag {
@@ -471,6 +552,47 @@
             margin-top: 40px;
             font-size: 13px;
         }
+
+        .toast-host {
+            position: fixed;
+            left: 12px;
+            right: 12px;
+            bottom: 12px;
+            pointer-events: none;
+            z-index: 1000;
+        }
+
+        .toast {
+            pointer-events: auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            padding: 8px 10px;
+            border-radius: 8px;
+            border: 1px solid #4a5d85;
+            background: #1a2437;
+            color: #dce8ff;
+            font-size: 11px;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+        }
+
+        .toast-message {
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .toast-action {
+            padding: 4px 8px;
+            border-radius: 6px;
+            border: 1px solid #5d76aa;
+            background: #2a3a58;
+            color: #eef4ff;
+            font-size: 11px;
+            font-weight: 600;
+        }
     </style>
 </head>
 <body>
@@ -487,6 +609,7 @@
     </div>
     <section id="detectedPanel" class="detected-panel hidden" aria-live="polite"></section>
     <div id="list"></div>
+    <div id="toastHost" class="toast-host"></div>
     <script src="dist/popup.js"></script>
 </body>
 </html>

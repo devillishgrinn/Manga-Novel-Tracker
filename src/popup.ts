@@ -12,6 +12,8 @@ const detectedPanel = document.getElementById("detectedPanel");
 const SITE_RULES_KEY = "siteAutoTrackRules";
 const LEGACY_DOMAIN_RULES_KEY = "domainAutoTrackRules";
 const DEFAULT_MIN_CONFIDENCE = 80;
+const COLLAPSED_SECTIONS_KEY = "collapsedSiteSections";
+const DELETE_UNDO_TIMEOUT_MS = 5000;
 const LOCAL_COVER_FALLBACK =
     "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='50' height='70' viewBox='0 0 50 70'%3E%3Crect width='50' height='70' fill='%23101622'/%3E%3Crect x='1' y='1' width='48' height='68' fill='none' stroke='%23364763'/%3E%3Ctext x='25' y='38' fill='%2397abcf' font-size='8' text-anchor='middle' font-family='Segoe UI,sans-serif'%3ENo Cover%3C/text%3E%3C/svg%3E";
 const SITE_ID_ALIASES: Record<string, string> = {
@@ -33,14 +35,31 @@ type SiteGroup = {
     entries: TrackerEntry[];
 };
 
+type SiteAutoTrackRule = {
+    autoTrack: boolean;
+    minConfidence: number;
+};
+
+type DetectionState = "detected" | "auto" | "low_confidence";
+
+type PendingDeleteState = {
+    entry: TrackerEntry;
+    originalIndex: number;
+    timerId: number;
+};
+
 let activeMediaFilter: MediaFilter = "manga";
 let cachedEntries: TrackerEntry[] = [];
 let detectedAnalysis: PageAnalysis | null = null;
 let detectedHostname: string | null = null;
 let detectedSiteKey: string | null = null;
+let collapsedSections: Record<string, boolean> = {};
+let pendingDelete: PendingDeleteState | null = null;
+let activeLongPressStop: (() => void) | null = null;
+let longPressReleaseHandlersBound = false;
 
 setupMediaToggle();
-refreshList();
+void initializePopup();
 void detectCurrentPage();
 
 function isMediaFilter(value: string): value is MediaFilter {
@@ -84,7 +103,64 @@ function renderFilteredEntries() {
     render(filteredEntries);
 }
 
-async function refreshList() {
+async function initializePopup() {
+    bindLongPressReleaseHandlers();
+    await loadCollapsedSections();
+    await refreshList();
+}
+
+function bindLongPressReleaseHandlers(): void {
+    if (longPressReleaseHandlersBound) {
+        return;
+    }
+
+    const release = () => {
+        if (activeLongPressStop) {
+            activeLongPressStop();
+        }
+    };
+
+    document.addEventListener("pointerup", release);
+    document.addEventListener("pointercancel", release);
+    document.addEventListener("touchend", release);
+    document.addEventListener("touchcancel", release);
+    window.addEventListener("blur", release);
+    longPressReleaseHandlersBound = true;
+}
+
+async function loadCollapsedSections(): Promise<void> {
+    if (!chrome.storage?.local?.get) {
+        collapsedSections = {};
+        return;
+    }
+
+    const result = await chrome.storage.local.get(COLLAPSED_SECTIONS_KEY);
+    const stored = result[COLLAPSED_SECTIONS_KEY];
+    collapsedSections = stored && typeof stored === "object"
+        ? (stored as Record<string, boolean>)
+        : {};
+}
+
+async function saveCollapsedSections(): Promise<void> {
+    if (!chrome.storage?.local?.set) {
+        return;
+    }
+
+    await chrome.storage.local.set({ [COLLAPSED_SECTIONS_KEY]: collapsedSections });
+}
+
+function isSiteCollapsed(siteId: string): boolean {
+    return Boolean(collapsedSections[siteId]);
+}
+
+async function toggleSiteCollapsed(siteId: string): Promise<void> {
+    collapsedSections[siteId] = !isSiteCollapsed(siteId);
+    await saveCollapsedSections();
+    renderFilteredEntries();
+}
+
+async function refreshList(options?: { preserveScroll?: boolean }) {
+    const previousScrollTop = options?.preserveScroll ? list.scrollTop : null;
     const entries = await loadEntries();
 
   // Sort by last updated (newest first)
@@ -92,6 +168,9 @@ async function refreshList() {
 
     cachedEntries = entries;
     renderFilteredEntries();
+    if (previousScrollTop !== null) {
+        list.scrollTop = previousScrollTop;
+    }
 }
 
 function normalizeHostname(hostname: string): string {
@@ -181,6 +260,67 @@ async function loadSiteRules(): Promise<Record<string, { autoTrack: boolean; min
     return rules as Record<string, { autoTrack: boolean; minConfidence: number }>;
 }
 
+async function getSiteRule(
+    siteKey: string,
+    legacyHostname?: string | null,
+): Promise<SiteAutoTrackRule | null> {
+    const rules = await loadSiteRules();
+    const normalized = normalizeRuleKey(siteKey);
+    if (rules[normalized]) {
+        return rules[normalized];
+    }
+
+    if (legacyHostname) {
+        const legacyNormalized = normalizeRuleKey(legacyHostname);
+        if (rules[legacyNormalized]) {
+            return rules[legacyNormalized];
+        }
+    }
+
+    return null;
+}
+
+function getDetectionState(
+    analysis: PageAnalysis,
+    rule: SiteAutoTrackRule | null,
+): DetectionState {
+    if (!rule || !rule.autoTrack) {
+        return "detected";
+    }
+
+    const minConfidence = Number.isFinite(rule.minConfidence)
+        ? rule.minConfidence
+        : DEFAULT_MIN_CONFIDENCE;
+
+    return analysis.confidence >= minConfidence ? "auto" : "low_confidence";
+}
+
+function applyDetectionStateBadge(
+    badge: HTMLElement | null,
+    state: DetectionState,
+): void {
+    if (!badge) {
+        return;
+    }
+
+    badge.classList.remove("detect-badge--detected", "detect-badge--auto", "detect-badge--low");
+
+    if (state === "auto") {
+        badge.classList.add("detect-badge--auto");
+        badge.textContent = "Auto-tracked";
+        return;
+    }
+
+    if (state === "low_confidence") {
+        badge.classList.add("detect-badge--low");
+        badge.textContent = "Not confident enough";
+        return;
+    }
+
+    badge.classList.add("detect-badge--detected");
+    badge.textContent = "Detected";
+}
+
 async function saveSiteRule(siteKey: string, minConfidence: number): Promise<void> {
     if (!chrome.storage?.local?.set) {
         return;
@@ -213,21 +353,6 @@ async function removeSiteRule(siteKey: string, legacyHostname?: string | null): 
         delete rules[legacyNormalized];
     }
     await chrome.storage.local.set({ [SITE_RULES_KEY]: rules });
-}
-
-async function isSiteAutoTracked(siteKey: string, legacyHostname?: string | null): Promise<boolean> {
-    const rules = await loadSiteRules();
-    const normalized = normalizeRuleKey(siteKey);
-    if (rules[normalized]?.autoTrack) {
-        return true;
-    }
-
-    if (legacyHostname) {
-        const legacyNormalized = normalizeRuleKey(legacyHostname);
-        return Boolean(rules[legacyNormalized]?.autoTrack);
-    }
-
-    return false;
 }
 
 function hideDetectionPanel(clearState = false): void {
@@ -293,7 +418,10 @@ function renderDetectionPanel(analysis: PageAnalysis): void {
             <div class="detected-preview">
                 <img class="detected-cover-img" src="${previewCover}" data-fallback-src="${LOCAL_COVER_FALLBACK}" alt="${analysis.payload.title} cover" />
                 <div class="detected-copy">
-                    <div class="detected-title">${analysis.payload.title}</div>
+                    <div class="detected-title-row">
+                        <div class="detected-title">${analysis.payload.title}</div>
+                        <span class="detect-badge detect-badge--detected" id="detectedStateBadge">Detected</span>
+                    </div>
                     <div class="detected-meta">Detected chapter ${chapterText} - ${formatConfidence(analysis.confidence)}</div>
                 </div>
             </div>
@@ -333,12 +461,15 @@ function renderDetectionPanel(analysis: PageAnalysis): void {
     const previewImg = detectedPanel.querySelector<HTMLImageElement>(".detected-cover-img");
     const sourcesToggle = detectedPanel.querySelector<HTMLButtonElement>("#detectedSourcesToggle");
     const sourcesPanel = detectedPanel.querySelector<HTMLElement>("#detectedSourcesPanel");
+    const stateBadge = detectedPanel.querySelector<HTMLElement>("#detectedStateBadge");
 
-    if (autoTrackCheck) {
-        void (async () => {
-            autoTrackCheck.checked = await isSiteAutoTracked(siteKey, detectedHostname);
-        })();
-    }
+    void (async () => {
+        const currentRule = await getSiteRule(siteKey, detectedHostname);
+        if (autoTrackCheck) {
+            autoTrackCheck.checked = Boolean(currentRule?.autoTrack);
+        }
+        applyDetectionStateBadge(stateBadge, getDetectionState(analysis, currentRule));
+    })();
 
     previewImg?.addEventListener("error", () => {
         const fallback = previewImg.dataset.fallbackSrc || LOCAL_COVER_FALLBACK;
@@ -365,12 +496,15 @@ function renderDetectionPanel(analysis: PageAnalysis): void {
 
         if (siteKey) {
             if (autoTrackCheck?.checked) {
-                await saveSiteRule(
-                    siteKey,
-                    getSuggestedMinConfidence(detectedAnalysis.confidence),
+                const minConfidence = getSuggestedMinConfidence(detectedAnalysis.confidence);
+                await saveSiteRule(siteKey, minConfidence);
+                applyDetectionStateBadge(
+                    stateBadge,
+                    getDetectionState(detectedAnalysis, { autoTrack: true, minConfidence }),
                 );
             } else {
                 await removeSiteRule(siteKey, detectedHostname);
+                applyDetectionStateBadge(stateBadge, "detected");
             }
         }
 
@@ -590,6 +724,210 @@ function groupEntriesBySite(entries: TrackerEntry[]): SiteGroup[] {
     }));
 }
 
+function getToastHost(): HTMLElement {
+    const existing = document.getElementById("toastHost");
+    if (existing) {
+        return existing;
+    }
+
+    const host = document.createElement("div");
+    host.id = "toastHost";
+    host.className = "toast-host";
+    document.body.appendChild(host);
+    return host;
+}
+
+function clearToast(): void {
+    const host = document.getElementById("toastHost");
+    if (host) {
+        host.innerHTML = "";
+    }
+}
+
+async function restoreDeletedEntry(state: PendingDeleteState): Promise<void> {
+    const entries = await loadEntries();
+    if (entries.some((entry) => entry.id === state.entry.id)) {
+        return;
+    }
+
+    const insertAt = Math.max(0, Math.min(state.originalIndex, entries.length));
+    entries.splice(insertAt, 0, state.entry);
+    await saveEntries(entries);
+    await refreshList();
+}
+
+function queueUndoDelete(entry: TrackerEntry, originalIndex: number): void {
+    if (pendingDelete) {
+        window.clearTimeout(pendingDelete.timerId);
+    }
+
+    const host = getToastHost();
+    const toast = document.createElement("div");
+    toast.className = "toast";
+    toast.innerHTML = `
+        <span class="toast-message">Removed ${escapeHtml(entry.title)}</span>
+        <button type="button" class="toast-action">Undo</button>
+    `;
+
+    host.innerHTML = "";
+    host.appendChild(toast);
+
+    const timerId = window.setTimeout(() => {
+        if (pendingDelete?.entry.id === entry.id) {
+            pendingDelete = null;
+        }
+        clearToast();
+    }, DELETE_UNDO_TIMEOUT_MS);
+
+    pendingDelete = { entry, originalIndex, timerId };
+
+    const undoButton = toast.querySelector<HTMLButtonElement>(".toast-action");
+    undoButton?.addEventListener("click", async () => {
+        if (!pendingDelete || pendingDelete.entry.id !== entry.id) {
+            return;
+        }
+
+        const snapshot = pendingDelete;
+        window.clearTimeout(snapshot.timerId);
+        pendingDelete = null;
+        clearToast();
+        await restoreDeletedEntry(snapshot);
+    });
+}
+
+function attachStepButton(
+    button: HTMLButtonElement,
+    onStep: () => Promise<void>,
+): void {
+    let pressDelayId: number | null = null;
+    let repeatId: number | null = null;
+    let repeated = false;
+    let inFlight = false;
+
+    const runStep = () => {
+        if (inFlight) {
+            return;
+        }
+
+        inFlight = true;
+        void onStep().finally(() => {
+            inFlight = false;
+        });
+    };
+
+    const clearTimers = () => {
+        if (pressDelayId !== null) {
+            window.clearTimeout(pressDelayId);
+            pressDelayId = null;
+        }
+        if (repeatId !== null) {
+            window.clearInterval(repeatId);
+            repeatId = null;
+        }
+
+        if (activeLongPressStop === clearTimers) {
+            activeLongPressStop = null;
+        }
+    };
+
+    const handlePressStart = (buttonCode?: number) => {
+        if (typeof buttonCode === "number" && buttonCode !== 0) {
+            return;
+        }
+
+        repeated = false;
+        clearTimers();
+        activeLongPressStop = clearTimers;
+        pressDelayId = window.setTimeout(() => {
+            repeated = true;
+            runStep();
+            repeatId = window.setInterval(runStep, 180);
+        }, 350);
+    };
+
+    button.addEventListener("click", (event) => {
+        if (repeated) {
+            event.preventDefault();
+            repeated = false;
+            return;
+        }
+        runStep();
+    });
+    button.addEventListener("pointerdown", (event) => {
+        handlePressStart(event.button);
+    });
+    button.addEventListener("pointerup", clearTimers);
+    button.addEventListener("pointercancel", clearTimers);
+    button.addEventListener("mouseleave", clearTimers);
+}
+
+function beginChapterEdit(
+    chapterValueEl: HTMLElement,
+    entry: TrackerEntry,
+): void {
+    if (chapterValueEl.dataset.editing === "true") {
+        return;
+    }
+
+    chapterValueEl.dataset.editing = "true";
+    const input = document.createElement("input");
+    input.type = "number";
+    input.min = "1";
+    input.step = "0.1";
+    input.className = "chapter-input";
+    input.value = String(entry.progress);
+
+    let settled = false;
+    const restoreDisplay = (value: number) => {
+        chapterValueEl.dataset.editing = "false";
+        chapterValueEl.textContent = `Ch. ${formatChapter(value)}`;
+    };
+
+    const commit = async () => {
+        if (settled) {
+            return;
+        }
+        settled = true;
+
+        const parsed = Number(input.value);
+        if (!Number.isFinite(parsed) || parsed < 1) {
+            restoreDisplay(entry.progress);
+            return;
+        }
+
+        restoreDisplay(parsed);
+        await setProgress(entry.id, parsed);
+    };
+
+    const cancel = () => {
+        if (settled) {
+            return;
+        }
+        settled = true;
+        restoreDisplay(entry.progress);
+    };
+
+    input.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+            event.preventDefault();
+            void commit();
+        }
+
+        if (event.key === "Escape") {
+            event.preventDefault();
+            cancel();
+        }
+    });
+    input.addEventListener("blur", () => {
+        void commit();
+    });
+
+    chapterValueEl.textContent = "";
+    chapterValueEl.appendChild(input);
+    input.focus();
+    input.select();
+}
+
 function render(entries: TrackerEntry[]) {
     if (entries.length === 0) {
     if (cachedEntries.length === 0) {
@@ -608,8 +946,9 @@ function render(entries: TrackerEntry[]) {
     const sampleSourceUrl = getPrimarySource(group.entries[0])?.sourceUrl;
     const siteLogoUrl = getSiteLogoUrl(group.siteId, sampleSourceUrl);
     const siteMonogram = getSiteMonogram(group.siteId);
+    const collapsed = isSiteCollapsed(group.siteId);
     const section = document.createElement("section");
-    section.className = `site-section site-${group.siteId}`;
+    section.className = `site-section site-${group.siteId}${collapsed ? " collapsed" : ""}`;
     section.innerHTML = `
         <div class="site-banner">
         <span class="site-logo" title="${siteName}">
@@ -620,18 +959,27 @@ function render(entries: TrackerEntry[]) {
             <span class="site-banner-name">${siteName}</span>
             <span class="site-banner-count">${group.entries.length} tracked</span>
         </div>
+        <button type="button" class="site-collapse-btn" aria-label="Toggle ${siteName} section" aria-expanded="${String(!collapsed)}">
+            <svg class="site-collapse-icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+                <path d="M5 7.5L10 12.5L15 7.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
+            </svg>
+        </button>
         </div>
         <div class="site-items"></div>
     `;
 
     const logoImg = section.querySelector(".site-logo-img") as HTMLImageElement | null;
     const logoFallback = section.querySelector(".site-logo-fallback") as HTMLElement | null;
+    const collapseBtn = section.querySelector(".site-collapse-btn") as HTMLButtonElement | null;
     if (logoImg && logoFallback) {
         logoImg.addEventListener("error", () => {
         logoImg.style.display = "none";
         logoFallback.style.display = "inline-flex";
         });
     }
+    collapseBtn?.addEventListener("click", () => {
+        void toggleSiteCollapsed(group.siteId);
+    });
 
     const items = section.querySelector(".site-items") as HTMLDivElement;
 
@@ -657,7 +1005,7 @@ function render(entries: TrackerEntry[]) {
             <span class="badge">${entry.mediaType}</span>
             <span class="chapter-controls">
                 <button class="btn-dec" data-id="${entry.id}" title="Previous Chapter">-</button>
-                <span class="chapter-value">Ch. ${formatChapter(entry.progress)}</span>
+                <span class="chapter-value" title="Click to jump to chapter">Ch. ${formatChapter(entry.progress)}</span>
                 <button class="btn-inc" data-id="${entry.id}" title="Next Chapter">+</button>
             </span>
             ${linkedCount > 1 ? `<span class="linked-tag">${linkedCount} linked</span>` : ""}
@@ -693,10 +1041,12 @@ function render(entries: TrackerEntry[]) {
     });
 
     const decBtn = div.querySelector(".btn-dec") as HTMLButtonElement;
-    decBtn.addEventListener("click", () => updateProgress(entry.id, -1));
+    attachStepButton(decBtn, () => updateProgress(entry.id, -1));
 
     const incBtn = div.querySelector(".btn-inc") as HTMLButtonElement;
-    incBtn.addEventListener("click", () => updateProgress(entry.id, 1));
+    attachStepButton(incBtn, () => updateProgress(entry.id, 1));
+    const chapterValueEl = div.querySelector(".chapter-value") as HTMLElement;
+    chapterValueEl.addEventListener("click", () => beginChapterEdit(chapterValueEl, entry));
 
     const delBtn = div.querySelector(".btn-del") as HTMLButtonElement;
     delBtn.addEventListener("click", () => deleteEntry(entry.id));
@@ -711,21 +1061,40 @@ function render(entries: TrackerEntry[]) {
 async function updateProgress(id: string, amount: number) {
     const entries = await loadEntries();
     const entry = entries.find((e) => e.id === id);
-
-    if (entry) {
-    entry.progress = Math.max(1, entry.progress + amount);
-    updateEntryChapterUrls(entry);
-    await saveEntries(entries);
-    refreshList();
+    if (!entry) {
+        return;
     }
+
+    await setProgress(id, entry.progress + amount);
+}
+
+async function setProgress(id: string, nextProgress: number) {
+    const entries = await loadEntries();
+    const entry = entries.find((e) => e.id === id);
+
+    if (!entry) {
+        return;
+    }
+
+    const clamped = Math.max(1, nextProgress);
+    entry.progress = clamped;
+    entry.latestKnownChapter = Math.max(entry.latestKnownChapter ?? 0, clamped);
+    updateEntryChapterUrls(entry);
+
+    await saveEntries(entries);
+    await refreshList({ preserveScroll: true });
 }
 
 async function deleteEntry(id: string) {
-    if (!confirm("Remove this series from your list?")) return;
-
     const entries = await loadEntries();
-    const filtered = entries.filter((e) => e.id !== id);
+    const index = entries.findIndex((entry) => entry.id === id);
+    if (index < 0) {
+        return;
+    }
 
-    await saveEntries(filtered);
-    refreshList();
+    const [removed] = entries.splice(index, 1);
+
+    await saveEntries(entries);
+    await refreshList();
+    queueUndoDelete(removed, index);
 }
