@@ -141,6 +141,25 @@ function formatConfidence(confidence: number): string {
     return `${safe}% confidence`;
 }
 
+function escapeHtml(value: string): string {
+    return value
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+}
+
+function renderSourceList(items: string[]): string {
+    if (items.length === 0) {
+        return '<span class="detected-source-item">No source attempts logged</span>';
+    }
+
+    return items
+        .map((item) => `<span class="detected-source-item">${escapeHtml(item)}</span>`)
+        .join("");
+}
+
 function getSuggestedMinConfidence(confidence: number): number {
     if (confidence >= 95) return 90;
     if (confidence >= 85) return 80;
@@ -264,13 +283,38 @@ function renderDetectionPanel(analysis: PageAnalysis): void {
         detectedSiteKey || analysis.payload.siteId || detectedHostname || "site",
     );
     const siteLabel = looksLikeHostname(siteKey) ? siteKey : formatSiteName(siteKey);
+    const titleSources = analysis.extractionSources?.title || [];
+    const coverSources = analysis.extractionSources?.cover || [];
+    const selectedTitleSource = analysis.extractionSources?.selectedTitle;
+    const selectedCoverSource = analysis.extractionSources?.selectedCover;
     detectedPanel.classList.remove("hidden");
     detectedPanel.innerHTML = `
-        <div class="detected-preview">
-            <img class="detected-cover-img" src="${previewCover}" data-fallback-src="${LOCAL_COVER_FALLBACK}" alt="${analysis.payload.title} cover" />
-            <div class="detected-copy">
-                <div class="detected-title">${analysis.payload.title}</div>
-                <div class="detected-meta">Detected chapter ${chapterText} - ${formatConfidence(analysis.confidence)}</div>
+        <div class="detected-preview-row">
+            <div class="detected-preview">
+                <img class="detected-cover-img" src="${previewCover}" data-fallback-src="${LOCAL_COVER_FALLBACK}" alt="${analysis.payload.title} cover" />
+                <div class="detected-copy">
+                    <div class="detected-title">${analysis.payload.title}</div>
+                    <div class="detected-meta">Detected chapter ${chapterText} - ${formatConfidence(analysis.confidence)}</div>
+                </div>
+            </div>
+            <button type="button" class="detected-info-btn" id="detectedSourcesToggle" aria-label="Show source details" aria-expanded="false">
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.7"></circle>
+                    <line x1="12" y1="10.6" x2="12" y2="16.2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"></line>
+                    <circle cx="12" cy="7.6" r="1" fill="currentColor"></circle>
+                </svg>
+            </button>
+        </div>
+        <div class="detected-sources hidden" id="detectedSourcesPanel">
+            <div class="detected-source-block">
+                <div class="detected-source-label">Title sources</div>
+                ${selectedTitleSource ? `<div class="detected-source-selected">Selected: ${escapeHtml(selectedTitleSource)}</div>` : ""}
+                <div class="detected-source-list">${renderSourceList(titleSources)}</div>
+            </div>
+            <div class="detected-source-block">
+                <div class="detected-source-label">Cover sources</div>
+                ${selectedCoverSource ? `<div class="detected-source-selected">Selected: ${escapeHtml(selectedCoverSource)}</div>` : ""}
+                <div class="detected-source-list">${renderSourceList(coverSources)}</div>
             </div>
         </div>
         <div class="detected-actions">
@@ -287,6 +331,8 @@ function renderDetectionPanel(analysis: PageAnalysis): void {
     const autoTrackCheck = detectedPanel.querySelector<HTMLInputElement>("#detectedAutoTrackCheck");
     const status = detectedPanel.querySelector<HTMLElement>("#detectedStatus");
     const previewImg = detectedPanel.querySelector<HTMLImageElement>(".detected-cover-img");
+    const sourcesToggle = detectedPanel.querySelector<HTMLButtonElement>("#detectedSourcesToggle");
+    const sourcesPanel = detectedPanel.querySelector<HTMLElement>("#detectedSourcesPanel");
 
     if (autoTrackCheck) {
         void (async () => {
@@ -299,6 +345,14 @@ function renderDetectionPanel(analysis: PageAnalysis): void {
         if (previewImg.src !== fallback) {
             previewImg.src = fallback;
         }
+    });
+
+    sourcesToggle?.addEventListener("click", () => {
+        if (!sourcesPanel) return;
+        const expanded = sourcesToggle.getAttribute("aria-expanded") === "true";
+        const nextExpanded = !expanded;
+        sourcesToggle.setAttribute("aria-expanded", String(nextExpanded));
+        sourcesPanel.classList.toggle("hidden", !nextExpanded);
     });
 
     addButton?.addEventListener("click", async () => {
