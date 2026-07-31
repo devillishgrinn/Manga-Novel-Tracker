@@ -1,19 +1,27 @@
 {
   "name": "Manga/Novel Tracker",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "scripts": {
-  "build": "esbuild src/background.ts src/contentScript.ts src/popup.ts --bundle --outdir=dist --platform=browser --target=es2020",
-  "watch": "esbuild src/background.ts src/contentScript.ts src/popup.ts --bundle --outdir=dist --platform=browser --target=es2020 --watch",
+  "build": "esbuild src/background.ts src/contentScript.ts src/popup.ts src/dashboard.ts src/settings.ts --bundle --outdir=dist --platform=browser --target=es2020",
+  "watch": "esbuild src/background.ts src/contentScript.ts src/popup.ts src/dashboard.ts src/settings.ts --bundle --outdir=dist --platform=browser --target=es2020 --watch",
+  "typecheck": "tsc --noEmit",
+  "format:check": "prettier --check \"src/**/*.ts\" \"tests/**/*.ts\" \"*.{json,html,md}\"",
+  "lint": "eslint src tests --ext .ts",
   "test": "vitest run tests/unit",
   "test:watch": "vitest",
   "test:integration": "vitest run tests/integration",
-  "test:all": "npm test && npm run test:integration"
+  "test:all": "npm test && npm run test:integration",
+  "release:package": "npm run build && node scripts/package-release.mjs"
   },
   "devDependencies": {
     "@types/chrome": "^0.1.36",
+    "@eslint/js": "^9.0.0",
     "esbuild": "^0.27.2",
+    "eslint": "^9.0.0",
     "jsdom": "^26.0.0",
+    "prettier": "^3.0.0",
+    "typescript-eslint": "^8.0.0",
     "typescript": "^5.0.0",
     "vitest": "^3.2.4"
   }

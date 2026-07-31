@@ -1,36 +1,16 @@
-import { TrackerPayload } from "./models"
+import { ProgressSnapshot } from "./models"
 
 export interface TrackProgressMessage {
-    type: "TRACK_PROGRESS"
-    payload: TrackerPayload
+  type: "TRACK_PROGRESS"
+  payload: ProgressSnapshot
 }
 
-export interface AnalyzeCurrentPageMessage {
-    type: "ANALYZE_CURRENT_PAGE"
+export interface RefreshLibraryMessage {
+  type: "REFRESH_LIBRARY"
 }
 
-export interface ExtractionSourceInfo {
-    title: string[]
-    cover: string[]
-    selectedTitle?: string
-    selectedCover?: string
+export interface OpenDashboardMessage {
+  type: "OPEN_DASHBOARD"
 }
 
-export interface PageAnalysis {
-    payload: TrackerPayload
-    confidence: number
-    reasons: string[]
-    detectedBy: "adapter" | "fallback"
-    extractionSources?: ExtractionSourceInfo
-}
-
-export interface AnalyzeCurrentPageResponse {
-    detected: boolean
-    analysis?: PageAnalysis
-    hostname?: string
-    siteKey?: string
-}
-
-export type ExtensionMessage =
-    |TrackProgressMessage
-    |AnalyzeCurrentPageMessage
+export type ExtensionMessage = TrackProgressMessage | RefreshLibraryMessage | OpenDashboardMessage

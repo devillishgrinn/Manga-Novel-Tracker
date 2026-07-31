@@ -58,7 +58,7 @@ export const fenrirealmAdapter: SiteAdapter = {
       sourceUrl: window.location.href,
       siteId: "fenrirealm",
 			seriesUrl: `${url.origin}/series/${seriesSlug}`,
-      coverUrl
+      coverUrl: coverUrl || undefined
     }
   }
 }

@@ -1,263 +1,139 @@
-import { loadEntries, saveEntries, upsertEntry } from "./core/storage.js"
-import { TrackerPayload } from "./core/models"
+import { getAdapter } from "./core/registry"
+import {
+  initializeLibrary,
+  listLibraryEntries,
+  listSourceSeries,
+  recordSeriesRefresh,
+  saveProgress,
+} from "./core/libraryDb"
+import { ExtensionMessage } from "./core/messages"
+import { loadSettings } from "./core/settings"
 
-console.log("Manga/Novel Tracker background loaded")
+const DAILY_REFRESH_ALARM = "daily-release-refresh"
+const REQUEST_TIMEOUT_MS = 10_000
+const REQUEST_SPACING_MS = 2_000
 
-const GENERIC_COVER_PATH_REGEX =
-  /\/(?:images\/(?:og-image|logo|svg\/logo|default_nato|404-avatar|no-avatar)|favicon|icon|logo|avatar|default|placeholder|no-cover)/i
-const GENERIC_TITLE_REGEX =
-  /^(report\s+a\s+bug|unlock\s+chapter|account|profile|home|library|roadmap|explore|sign\s*in|log\s*in|register|search|menu|notices?|chapter\s*\d+(?:[._-]\d+)?|ch\.?\s*\d+(?:[._-]\d+)?)$/i
-const MANGA_CDN_REFERER_RULE_IDS = [91001, 91002, 91003]
-const MANGA_REFERER = "https://www.manganato.gg/"
+function wait(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds))
+}
 
-async function ensureMangaCdnRefererRules(): Promise<void> {
-  if (!chrome.declarativeNetRequest?.updateDynamicRules) {
+function nextRefreshTime(hour: number): number {
+  const next = new Date()
+  next.setHours(hour, 0, 0, 0)
+  if (next.getTime() <= Date.now()) next.setDate(next.getDate() + 1)
+  return next.getTime()
+}
+
+async function ensureRefreshAlarm(): Promise<void> {
+  const settings = await loadSettings()
+  if (!settings.refreshEnabled) {
+    await chrome.alarms.clear(DAILY_REFRESH_ALARM)
     return
   }
+  await chrome.alarms.create(DAILY_REFRESH_ALARM, {
+    when: nextRefreshTime(settings.refreshHourLocal),
+    periodInMinutes: 24 * 60,
+  })
+}
 
+async function fetchPublicText(url: string): Promise<string> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
   try {
-    await chrome.declarativeNetRequest.updateDynamicRules({
-      removeRuleIds: MANGA_CDN_REFERER_RULE_IDS,
-      addRules: [
-        {
-          id: 91001,
-          priority: 1,
-          action: {
-            type: "modifyHeaders",
-            requestHeaders: [{ header: "referer", operation: "set", value: MANGA_REFERER }],
-          },
-          condition: {
-            regexFilter: "^https?://img-r1\\.2xstorage\\.com/.*",
-            resourceTypes: ["image"],
-            initiatorDomains: [chrome.runtime.id],
-          },
-        },
-        {
-          id: 91002,
-          priority: 1,
-          action: {
-            type: "modifyHeaders",
-            requestHeaders: [{ header: "referer", operation: "set", value: MANGA_REFERER }],
-          },
-          condition: {
-            regexFilter: "^https?://storage\\.waitst\\.com/.*",
-            resourceTypes: ["image"],
-            initiatorDomains: [chrome.runtime.id],
-          },
-        },
-        {
-          id: 91003,
-          priority: 1,
-          action: {
-            type: "modifyHeaders",
-            requestHeaders: [{ header: "referer", operation: "set", value: MANGA_REFERER }],
-          },
-          condition: {
-            regexFilter: "^https?://imgs-2\\.2xstorage\\.com/.*",
-            resourceTypes: ["image"],
-            initiatorDomains: [chrome.runtime.id],
-          },
-        },
-      ],
+    const response = await fetch(url, {
+      credentials: "omit",
+      redirect: "follow",
+      signal: controller.signal,
     })
-  } catch (err) {
-    console.error("Failed to set manga CDN header rules:", err)
+    if (!response.ok) throw new Error(`Request failed (${response.status})`)
+    const contentType = response.headers.get("content-type") || ""
+    if (contentType && !/text\/html|application\/xhtml\+xml/i.test(contentType)) {
+      throw new Error("Source did not return an HTML page")
+    }
+    return response.text()
+  } finally {
+    clearTimeout(timeout)
   }
 }
 
-function isUsableCoverUrl(url: string, seriesUrl: string): boolean {
-  try {
-    const resolved = new URL(url)
-    const seriesOrigin = new URL(seriesUrl).origin
-    if ((resolved.protocol !== "http:" && resolved.protocol !== "https:") || /\.(?:svg|ico)$/i.test(resolved.pathname)) {
-      return false
-    }
-    if (!resolved.pathname || resolved.pathname === "/") {
-      return false
-    }
-    if (resolved.origin === seriesOrigin && GENERIC_COVER_PATH_REGEX.test(resolved.pathname)) {
-      return false
-    }
-    if (GENERIC_COVER_PATH_REGEX.test(resolved.pathname)) {
-      return false
-    }
-
-    return true
-  } catch {
-    return false
-  }
+async function updateBadge(): Promise<void> {
+  const unread = (await listLibraryEntries()).reduce((total, entry) => total + entry.unreadCount, 0)
+  await chrome.action.setBadgeText({ text: unread > 0 ? String(unread) : "" })
+  if (unread > 0) await chrome.action.setBadgeBackgroundColor({ color: "#2f7d4a" })
 }
 
-function resolveCoverUrl(rawUrl: string, seriesUrl: string): string | null {
-  try {
-    return new URL(rawUrl, seriesUrl).href
-  } catch {
-    return null
-  }
+async function notifyRelease(title: string, chapter: number): Promise<void> {
+  const settings = await loadSettings()
+  if (!settings.notificationsEnabled) return
+  const permitted = await chrome.permissions.contains({ permissions: ["notifications"] })
+  if (!permitted) return
+  await chrome.notifications.create(`release-${Date.now()}`, {
+    type: "basic",
+    iconUrl: "assets/icon.svg",
+    title: "New chapter available",
+    message: `${title}: Chapter ${chapter}`,
+    priority: 0,
+  })
 }
 
-function extractCoverFromHtml(html: string, seriesUrl: string): string | null {
-  const patterns = [
-    /<meta[^>]+(?:property|name)=["']og:image["'][^>]+content=["']([^"']+)["'][^>]*>/i,
-    /<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']og:image["'][^>]*>/i,
-    /<meta[^>]+(?:property|name)=["']og:image:url["'][^>]+content=["']([^"']+)["'][^>]*>/i,
-    /<meta[^>]+(?:property|name)=["']twitter:image["'][^>]+content=["']([^"']+)["'][^>]*>/i,
-    /<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']twitter:image["'][^>]*>/i,
-    /<link[^>]+rel=["']image_src["'][^>]+href=["']([^"']+)["'][^>]*>/i,
-    /<img[^>]+class=["'][^"']*(cover|poster|thumb|summary|series)[^"']*["'][^>]+src=["']([^"']+)["'][^>]*>/i,
-    /<img[^>]+src=["']([^"']+)["'][^>]+class=["'][^"']*(cover|poster|thumb|summary|series)[^"']*["'][^>]*>/i,
-    /<img[^>]+class=["'][^"']*(cover|poster|thumb|summary|series)[^"']*["'][^>]+(?:data-src|data-original|data-lazy-src)=["']([^"']+)["'][^>]*>/i,
-    /<img[^>]+(?:data-src|data-original|data-lazy-src)=["']([^"']+)["'][^>]+class=["'][^"']*(cover|poster|thumb|summary|series)[^"']*["'][^>]*>/i,
-    /seriesCoverUrlFromAstro":"([^"\\]+)"/i,
-    /seriesCoverUrlFromAstro\\":\\"([^"\\]+)\\"/i,
-    /"series_cover_url":"([^"\\]+)"/i,
-    /series_cover_url\\":\\"([^"\\]+)\\"/i,
-    /"cover_url":"([^"\\]+)"/i,
-    /cover_url\\":\\"([^"\\]+)\\"/i,
-    /"image"\s*:\s*"([^"]+)"/i,
-    /image\\":\\"([^"\\]+)\\"/i,
-  ]
-
-  for (const pattern of patterns) {
-    const match = html.match(pattern)
-    if (!match) {
+export async function refreshLibrary(): Promise<void> {
+  const settings = await loadSettings()
+  if (!settings.refreshEnabled) return
+  const sources = await listSourceSeries()
+  for (let index = 0; index < sources.length; index += 1) {
+    const source = sources[index]
+    const adapter = getAdapter(source.sourceId)
+    if (!adapter) {
+      await recordSeriesRefresh(null, source.id, "No installed adapter is available for this source")
       continue
     }
-
-    const rawCover = match[2] || match[1]
-    if (!rawCover) {
-      continue
+    try {
+      const pageUrl = new URL(source.seriesUrl)
+      const html = await fetchPublicText(source.seriesUrl)
+      const snapshot = adapter.parseSeriesPage(html, pageUrl)
+      const result = await recordSeriesRefresh(snapshot, source.id, snapshot ? undefined : "No release metadata found")
+      if (result?.hasNewRelease && result.source.latestChapter !== undefined) {
+        await notifyRelease(result.source.title, result.source.latestChapter)
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Refresh failed"
+      await recordSeriesRefresh(null, source.id, message)
     }
-
-    const resolvedCover = resolveCoverUrl(rawCover, seriesUrl)
-    if (!resolvedCover) {
-      continue
-    }
-
-    if (isUsableCoverUrl(resolvedCover, seriesUrl)) {
-      return resolvedCover
-    }
+    if (index < sources.length - 1) await wait(REQUEST_SPACING_MS)
   }
-
-  return null
+  await updateBadge()
 }
 
-function sanitizeTitleCandidate(raw: string): string | null {
-  const title = raw
-    .replace(/\s*[-|:]\s*(chapter|chap|ch)\.?\s*\d+(?:[._-]\d+)?\b.*$/i, "")
-    .replace(/^(chapter|chap|ch)\.?\s*\d+(?:[._-]\d+)?\s*[-|:]\s*/i, "")
-    .replace(/\s*[-|:]\s*(read|online|for free).*$/i, "")
-    .replace(/^read\s+/i, "")
-    .trim()
-
-  if (!title || title.length < 2 || GENERIC_TITLE_REGEX.test(title)) {
-    return null
-  }
-
-  return title
-}
-
-function extractTitleFromHtml(html: string): string | null {
-  const patterns = [
-    /seriesNameFromAstro":"([^"\\]+)"/i,
-    /seriesNameFromAstro\\":\\"([^"\\]+)\\"/i,
-    /"series_name":"([^"\\]+)"/i,
-    /series_name\\":\\"([^"\\]+)\\"/i,
-    /<meta[^>]+(?:property|name)=["']og:title["'][^>]+content=["']([^"']+)["'][^>]*>/i,
-    /<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']og:title["'][^>]*>/i,
-    /<title>([^<]+)<\/title>/i,
-  ]
-
-  for (const pattern of patterns) {
-    const match = html.match(pattern)
-    const candidate = match?.[1]?.trim()
-    if (!candidate) {
-      continue
-    }
-
-    const cleaned = candidate
-      .replace(/\s*[-|:]\s*(rapid|asura\s*scans|manganato|mangakakalot|fenrir\s*realm|helioscans|novel\s*bin)\s*$/i, "")
-      .replace(/\s*[-|:]\s*[a-z0-9-]+\.(com|net|org|gg|io)\s*$/i, "")
-      .trim()
-
-    const sanitized = sanitizeTitleCandidate(cleaned)
-    if (sanitized) {
-      return sanitized
-    }
-  }
-
-  return null
-}
-
-function isWeakTitle(title: string): boolean {
-  const normalized = title.trim()
-  if (!normalized || normalized.length < 3) {
-    return true
-  }
-
-  if (GENERIC_TITLE_REGEX.test(normalized)) {
-    return true
-  }
-
-  return false
+async function startup(): Promise<void> {
+  await initializeLibrary()
+  await ensureRefreshAlarm()
+  await updateBadge()
 }
 
 if (chrome.runtime?.onInstalled?.addListener) {
-  chrome.runtime.onInstalled.addListener(() => {
-    void ensureMangaCdnRefererRules()
-  })
+  chrome.runtime.onInstalled.addListener(() => void startup())
 }
-
 if (chrome.runtime?.onStartup?.addListener) {
-  chrome.runtime.onStartup.addListener(() => {
-    void ensureMangaCdnRefererRules()
-  })
+  chrome.runtime.onStartup.addListener(() => void startup())
 }
+void startup()
 
-void ensureMangaCdnRefererRules()
-
-chrome.runtime.onMessage.addListener((message) => {
-  console.log("Message received:", message)
-
-  if (message.type === "TRACK_PROGRESS") {
-    handleTrack(message.payload)
-  }
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === DAILY_REFRESH_ALARM) void refreshLibrary()
 })
 
-async function handleTrack(payload: TrackerPayload) {
-  const shouldRefineTitle = isWeakTitle(payload.title)
-  const shouldFetchCover =
-    Boolean(payload.seriesUrl) &&
-    (!payload.coverUrl || !isUsableCoverUrl(payload.coverUrl, payload.seriesUrl!))
-  const shouldFetchMetadata = Boolean(payload.seriesUrl) && (shouldFetchCover || shouldRefineTitle)
-
-  // Try series-page fetch when cover/title looks weak.
-  if (shouldFetchMetadata && payload.seriesUrl) {
-    try {
-      console.log("Fetching missing cover from:", payload.seriesUrl)
-      const response = await fetch(payload.seriesUrl)
-      const html = await response.text()
-
-      if (shouldFetchCover) {
-        const foundCover = extractCoverFromHtml(html, payload.seriesUrl)
-        if (foundCover) {
-          console.log("Background fetch success:", foundCover)
-          payload.coverUrl = foundCover
-        }
-      }
-
-      if (shouldRefineTitle) {
-        const foundTitle = extractTitleFromHtml(html)
-        if (foundTitle) {
-          payload.title = foundTitle
-        }
-      }
-    } catch (err) {
-      console.error("Background fetch failed:", err)
-    }
+chrome.runtime.onMessage.addListener((message: ExtensionMessage, _sender, sendResponse) => {
+  if (message.type === "TRACK_PROGRESS") {
+    void saveProgress(message.payload).then(updateBadge).then(() => sendResponse({ ok: true }))
+    return true
   }
-
-  const entries = await loadEntries()
-  const updated = upsertEntry(entries, payload, payload.siteId)
-  await saveEntries(updated)
-}
+  if (message.type === "REFRESH_LIBRARY") {
+    void refreshLibrary().then(() => sendResponse({ ok: true })).catch((error: Error) => sendResponse({ ok: false, error: error.message }))
+    return true
+  }
+  if (message.type === "OPEN_DASHBOARD") {
+    void chrome.tabs.create({ url: chrome.runtime.getURL("dashboard.html") })
+    return false
+  }
+  return false
+})

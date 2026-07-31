@@ -1,8 +1,9 @@
 {
   "manifest_version": 3,
   "name": "Manga/Novel Tracker",
-  "version": "0.1.0",
-  "permissions": ["storage", "tabs", "activeTab", "declarativeNetRequestWithHostAccess"],
+  "version": "0.2.0",
+  "permissions": ["storage", "alarms"],
+  "optional_permissions": ["notifications"],
   "host_permissions": [
     "https://fenrirealm.com/*",
     "https://www.fenrirealm.com/*",
@@ -17,10 +18,7 @@
     "https://mangakakalot.gg/*",
     "https://www.mangakakalot.gg/*",
     "https://novelbin.com/*",
-    "https://www.novelbin.com/*",
-    "https://img-r1.2xstorage.com/*",
-    "https://imgs-2.2xstorage.com/*",
-    "https://storage.waitst.com/*"
+    "https://www.novelbin.com/*"
   ],
   "background": {
     "service_worker": "dist/background.js",
@@ -29,11 +27,9 @@
   "content_scripts": [
     {
       "matches": [
-        "https://*/*",
-        "http://*/*",
         "https://fenrirealm.com/series/*",
         "https://www.fenrirealm.com/series/*",
-        "https://helioscans.com/*",
+        "https://helioscans.com/chapter/*",
         "https://asuracomic.net/series/*/chapter/*",
         "https://www.asuracomic.net/series/*/chapter/*",
         "https://asurascans.com/series/*/chapter/*",
@@ -49,6 +45,8 @@
     }
   ],
   "action": {
-    "default_popup": "popup.html"
-  }
+    "default_popup": "popup.html",
+    "default_title": "Manga/Novel Tracker"
+  },
+  "options_page": "settings.html"
 }

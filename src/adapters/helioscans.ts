@@ -47,7 +47,7 @@ export const helioScansAdapter: SiteAdapter = {
         sourceUrl: window.location.href, 
         siteId: "helioscans",
         seriesUrl,
-        coverUrl
+        coverUrl: coverUrl || undefined
         };
     }
 };
