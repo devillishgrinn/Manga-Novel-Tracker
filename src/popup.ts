@@ -169,26 +169,5 @@ document.getElementById("settings")?.addEventListener("click", () => {
   chrome.runtime.openOptionsPage()
 })
 
-document
-  .getElementById("refresh")
-  ?.addEventListener("click", () =>
-    chrome.runtime.sendMessage(
-      { type: "REFRESH_LIBRARY" },
-      () => void refresh(),
-    ),
-  )
-
-document
-  .getElementById("dashboard")
-  ?.addEventListener("click", () =>
-    chrome.runtime.sendMessage({ type: "OPEN_DASHBOARD" }),
-  )
-
-document
-  .getElementById("settings")
-  ?.addEventListener("click", () =>
-    chrome.runtime.openOptionsPage(),
-  )
-
 setupMediaToggle()
 void refresh()
