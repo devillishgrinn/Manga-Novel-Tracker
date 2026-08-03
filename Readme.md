@@ -1,125 +1,37 @@
-# Manga/Novel Tracker (Chrome Extension)
+# Manga/Novel Tracker
 
-A Manifest V3 Chrome extension that automatically tracks your reading progress on supported manga/novel sites and keeps everything in one popup list.
+A private, local-first Manifest V3 Chrome extension that tracks reading progress and new chapters on Fenrir Realm, HelioScans, Asura, MangaNato/Kakalot, and NovelBin.
 
-## Features
+## What it does
 
-- Auto-detects current chapter from supported sites.
-- Saves progress in `chrome.storage.local`.
-- Groups entries by site in the popup.
-- Quick actions in popup:
-  - Open series page
-  - Open chapter page
-  - Increment/decrement chapter
-  - Delete entry
-- Merges entries across sites when title and media type match.
-- Attempts cover image fallback from series page when missing.
-
-## Supported Sites
-
-- Fenrir Realm (`fenrirealm.com`)
-- HelioScans (`helioscans.com`)
-- Asura Scans / Asura Comic
-  - `asuracomic.net`
-  - `asurascans.com`
-  - `beta.asurascans.com`
-- MangaNato / MangaKakalot
-  - `manganato.gg`
-  - `mangakakalot.gg`
-- NovelBin
-  - `novelbin.com`
-
-## Tech Stack
-
-- TypeScript
-- Chrome Extensions API (Manifest V3)
-- esbuild (bundling)
-- Vitest + jsdom (unit/integration tests)
-
-## Project Structure
-
-```text
-src/
-  adapters/        Site-specific extraction logic
-  core/            Router, models, storage, registry
-  background.ts    Receives tracking events and persists entries
-  contentScript.ts Detects supported pages and sends payloads
-  popup.ts         Popup UI logic
-tests/
-  unit/            Unit tests
-  integration/     End-to-end extension flow tests
-manifest.json      Extension configuration
-popup.html         Popup layout and styles
-```
-
-## Setup
-
-### 1. Install dependencies
-
-```bash
-npm install
-```
-
-### 2. Build extension
-
-```bash
-npm run build
-```
-
-### 3. Load in Chrome
-
-1. Open `chrome://extensions/`
-2. Enable `Developer mode`
-3. Click `Load unpacked`
-4. Select this project folder
+- Saves progress from supported chapter pages after explicit onboarding consent.
+- Keeps source identities separate (`sourceId:externalId`); titles never cause automatic merging.
+- Lets you explicitly link equivalent source records, choose a preferred source, edit progress, and resume reading.
+- Checks tracked public series pages daily or on demand, with an unread badge and optional desktop notifications.
+- Exports/imports a local JSON backup. No accounts, cloud sync, analytics, or backend are used.
 
 ## Development
 
-Use watch mode for automatic rebuilds:
-
-```bash
-npm run watch
+```powershell
+npm install
+npm run typecheck
+npm run test:all
+npm run build
 ```
 
-After rebuilds, reload the extension in `chrome://extensions/`.
+Load this folder as an unpacked extension from `chrome://extensions` with Developer mode enabled. Open **Settings**, consent to local tracking, and enable automatic tracking before visiting a supported chapter page.
 
-## Available Scripts
+## Private release
 
-- `npm run build` - Bundle extension files into `dist/`
-- `npm run watch` - Build in watch mode
-- `npm test` - Run unit tests
-- `npm run test:integration` - Run integration tests
-- `npm run test:all` - Run all tests
-
-## How It Works
-
-1. `contentScript.ts` runs on supported chapter URLs.
-2. It uses `routePage()` to select the correct adapter.
-3. Adapter extracts a normalized tracking payload.
-4. Payload is sent to `background.ts` as `TRACK_PROGRESS`.
-5. Background merges/upserts data into `chrome.storage.local`.
-6. `popup.ts` reads entries and renders your reading list.
-
-Storage key: `trackerEntries`
-
-## Permissions
-
-- `storage` for local persistence
-- Host permissions for supported domains in `manifest.json`
-
-## Run in Docker (Optional)
-
-```bash
-docker build -t manga-novel-tracker .
-docker run --rm -it manga-novel-tracker
+```powershell
+npm run release:package
 ```
 
-## Known Limitations
+This creates a versioned ZIP and SHA-256 checksum in `release/`. Testers unzip it and load the resulting folder as an unpacked extension. See [manual validation](docs/MANUAL-VALIDATION.md) before distribution and [privacy details](docs/PRIVACY.md).
 
-- Site layout/title changes can break adapter extraction.
-- Cross-site merge is title-based; inconsistent titles can create duplicates.
-- Progress increases only when the new value is higher than stored progress (except manual +/- in popup).
+## Design
 
-## Disclaimer
-
-This project is for educational/personal use and is not affiliated with any supported website.
+- `LibrarySeries` is a local library card.
+- `SourceSeries` is a deterministic source identity.
+- `SeriesSourceLink` is an explicit user-confirmed relationship between them.
+- Source adapters are statically compiled parsing modules; the background service owns network access and refresh policy.

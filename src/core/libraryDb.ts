@@ -16,7 +16,8 @@ const DB_VERSION = 1
 const LEGACY_STORAGE_KEY = "trackerEntries"
 const MIGRATION_KEY = "legacy-v1-to-indexeddb"
 
-type StoreName = "librarySeries" | "sourceSeries" | "seriesSourceLinks" | "releaseChecks" | "migrationMetadata"
+type StoreName =
+  "librarySeries" | "sourceSeries" | "seriesSourceLinks" | "releaseChecks" | "migrationMetadata"
 
 const memoryStores: Record<StoreName, Map<string, unknown>> = {
   librarySeries: new Map(),
@@ -57,8 +58,10 @@ function openDatabase(): Promise<IDBDatabase> {
     const request = indexedDB.open(DB_NAME, DB_VERSION)
     request.onupgradeneeded = () => {
       const db = request.result
-      if (!db.objectStoreNames.contains("librarySeries")) db.createObjectStore("librarySeries", { keyPath: "id" })
-      if (!db.objectStoreNames.contains("sourceSeries")) db.createObjectStore("sourceSeries", { keyPath: "id" })
+      if (!db.objectStoreNames.contains("librarySeries"))
+        db.createObjectStore("librarySeries", { keyPath: "id" })
+      if (!db.objectStoreNames.contains("sourceSeries"))
+        db.createObjectStore("sourceSeries", { keyPath: "id" })
       if (!db.objectStoreNames.contains("seriesSourceLinks")) {
         const store = db.createObjectStore("seriesSourceLinks", { keyPath: "id" })
         store.createIndex("byLibrary", "librarySeriesId", { unique: false })
@@ -68,7 +71,8 @@ function openDatabase(): Promise<IDBDatabase> {
         const store = db.createObjectStore("releaseChecks", { keyPath: "id" })
         store.createIndex("bySource", "sourceSeriesId", { unique: false })
       }
-      if (!db.objectStoreNames.contains("migrationMetadata")) db.createObjectStore("migrationMetadata", { keyPath: "id" })
+      if (!db.objectStoreNames.contains("migrationMetadata"))
+        db.createObjectStore("migrationMetadata", { keyPath: "id" })
     }
     request.onsuccess = () => resolve(request.result)
     request.onerror = () => reject(request.error || new Error("Unable to open IndexedDB"))
@@ -168,9 +172,10 @@ function stripLegacyChapterUrl(rawUrl: string): string {
     const url = new URL(rawUrl)
     url.hash = ""
     url.search = ""
-    url.pathname = url.pathname
-      .replace(/\/(?:chapter[-_/]?\d+(?:[._-]\d+)?|\d+(?:\.\d+)?)\/?$/i, "")
-      .replace(/\/+$/, "") || "/"
+    url.pathname =
+      url.pathname
+        .replace(/\/(?:chapter[-_/]?\d+(?:[._-]\d+)?|\d+(?:\.\d+)?)\/?$/i, "")
+        .replace(/\/+$/, "") || "/"
     return url.href
   } catch {
     return rawUrl
@@ -262,13 +267,14 @@ export async function listLibraryEntries(): Promise<LibraryEntry[]> {
         .filter((link) => link.librarySeriesId === series.id)
         .map((link) => sourcesById.get(link.sourceSeriesId))
         .filter((source): source is SourceSeries => Boolean(source))
-      const preferredSource = sources.find((source) => source.id === series.preferredSourceSeriesId) || sources[0]
+      const preferredSource =
+        sources.find((source) => source.id === series.preferredSourceSeriesId) || sources[0]
       if (!preferredSource) return null
       return {
         series,
         preferredSource,
         sources,
-        unreadCount: Math.max(0, ...(sources.map((source) => (source.latestChapter || 0) - series.progress))),
+        unreadCount: Math.max(0, ...sources.map((source) => (source.latestChapter || 0) - series.progress)),
       }
     })
     .filter((entry): entry is LibraryEntry => Boolean(entry))
@@ -290,8 +296,16 @@ export async function setPreferredSource(librarySeriesId: string, sourceSeriesId
     getRecord<LibrarySeries>("librarySeries", librarySeriesId),
     getAllRecords<SeriesSourceLink>("seriesSourceLinks"),
   ])
-  if (!series || !links.some((link) => link.librarySeriesId === librarySeriesId && link.sourceSeriesId === sourceSeriesId)) return
-  await putRecord("librarySeries", { ...series, preferredSourceSeriesId: sourceSeriesId, updatedAt: Date.now() })
+  if (
+    !series ||
+    !links.some((link) => link.librarySeriesId === librarySeriesId && link.sourceSeriesId === sourceSeriesId)
+  )
+    return
+  await putRecord("librarySeries", {
+    ...series,
+    preferredSourceSeriesId: sourceSeriesId,
+    updatedAt: Date.now(),
+  })
 }
 
 export async function linkSourceSeries(targetLibrarySeriesId: string, sourceSeriesId: string): Promise<void> {
@@ -303,7 +317,9 @@ export async function linkSourceSeries(targetLibrarySeriesId: string, sourceSeri
   if (!target || !source || target.mediaType !== source.mediaType) return
   const existing = links.find((link) => link.sourceSeriesId === sourceSeriesId)
   if (existing?.librarySeriesId === targetLibrarySeriesId) return
-  const previous = existing ? await getRecord<LibrarySeries>("librarySeries", existing.librarySeriesId) : undefined
+  const previous = existing
+    ? await getRecord<LibrarySeries>("librarySeries", existing.librarySeriesId)
+    : undefined
   if (existing) await deleteRecord("seriesSourceLinks", existing.id)
   await putRecord("seriesSourceLinks", {
     id: sourceLinkId(targetLibrarySeriesId, sourceSeriesId),
@@ -325,7 +341,10 @@ export async function linkSourceSeries(targetLibrarySeriesId: string, sourceSeri
 }
 
 export async function unlinkSourceSeries(librarySeriesId: string, sourceSeriesId: string): Promise<void> {
-  const link = await getRecord<SeriesSourceLink>("seriesSourceLinks", sourceLinkId(librarySeriesId, sourceSeriesId))
+  const link = await getRecord<SeriesSourceLink>(
+    "seriesSourceLinks",
+    sourceLinkId(librarySeriesId, sourceSeriesId),
+  )
   if (!link) return
   const [series, source] = await Promise.all([
     getRecord<LibrarySeries>("librarySeries", librarySeriesId),
@@ -354,7 +373,10 @@ export async function unlinkSourceSeries(librarySeriesId: string, sourceSeriesId
     linkedAt: Date.now(),
   } satisfies SeriesSourceLink)
   if (series.preferredSourceSeriesId === sourceSeriesId) {
-    const replacement = links.find((candidate) => candidate.librarySeriesId === librarySeriesId && candidate.sourceSeriesId !== sourceSeriesId)
+    const replacement = links.find(
+      (candidate) =>
+        candidate.librarySeriesId === librarySeriesId && candidate.sourceSeriesId !== sourceSeriesId,
+    )
     if (replacement) await setPreferredSource(librarySeriesId, replacement.sourceSeriesId)
   }
 }
@@ -374,14 +396,19 @@ export interface RefreshResult {
   hasNewRelease: boolean
 }
 
-export async function recordSeriesRefresh(snapshot: SeriesSnapshot | null, sourceSeriesId: string, error?: string): Promise<RefreshResult | null> {
+export async function recordSeriesRefresh(
+  snapshot: SeriesSnapshot | null,
+  sourceSeriesId: string,
+  error?: string,
+): Promise<RefreshResult | null> {
   const source = await getRecord<SourceSeries>("sourceSeries", sourceSeriesId)
   if (!source) return null
   const now = Date.now()
   const previousLatest = source.latestChapter
   const nextLatest = snapshot?.latestChapter
   const failed = Boolean(error || !snapshot)
-  const hasNewRelease = !failed && previousLatest !== undefined && nextLatest !== undefined && nextLatest > previousLatest
+  const hasNewRelease =
+    !failed && previousLatest !== undefined && nextLatest !== undefined && nextLatest > previousLatest
   const status: ReleaseCheck["status"] = failed
     ? "failed"
     : previousLatest === undefined
@@ -419,12 +446,34 @@ export async function exportLibraryBackup(): Promise<string> {
     getAllRecords<SeriesSourceLink>("seriesSourceLinks"),
     getAllRecords<ReleaseCheck>("releaseChecks"),
   ])
-  return JSON.stringify({ schemaVersion: 1, exportedAt: new Date().toISOString(), librarySeries, sourceSeries, seriesSourceLinks, releaseChecks }, null, 2)
+  return JSON.stringify(
+    {
+      schemaVersion: 1,
+      exportedAt: new Date().toISOString(),
+      librarySeries,
+      sourceSeries,
+      seriesSourceLinks,
+      releaseChecks,
+    },
+    null,
+    2,
+  )
 }
 
 export async function importLibraryBackup(raw: string): Promise<{ imported: number; skipped: number }> {
-  const parsed = JSON.parse(raw) as { schemaVersion?: number; librarySeries?: LibrarySeries[]; sourceSeries?: SourceSeries[]; seriesSourceLinks?: SeriesSourceLink[]; releaseChecks?: ReleaseCheck[] }
-  if (parsed.schemaVersion !== 1 || !Array.isArray(parsed.librarySeries) || !Array.isArray(parsed.sourceSeries) || !Array.isArray(parsed.seriesSourceLinks)) {
+  const parsed = JSON.parse(raw) as {
+    schemaVersion?: number
+    librarySeries?: LibrarySeries[]
+    sourceSeries?: SourceSeries[]
+    seriesSourceLinks?: SeriesSourceLink[]
+    releaseChecks?: ReleaseCheck[]
+  }
+  if (
+    parsed.schemaVersion !== 1 ||
+    !Array.isArray(parsed.librarySeries) ||
+    !Array.isArray(parsed.sourceSeries) ||
+    !Array.isArray(parsed.seriesSourceLinks)
+  ) {
     throw new Error("Unsupported backup format")
   }
   let imported = 0
@@ -437,10 +486,12 @@ export async function importLibraryBackup(raw: string): Promise<{ imported: numb
     }
   }
   for (const series of parsed.librarySeries) {
-    if (!(await getRecord<LibrarySeries>("librarySeries", series.id))) await putRecord("librarySeries", series)
+    if (!(await getRecord<LibrarySeries>("librarySeries", series.id)))
+      await putRecord("librarySeries", series)
   }
   for (const link of parsed.seriesSourceLinks) {
-    if (!(await getRecord<SeriesSourceLink>("seriesSourceLinks", link.id))) await putRecord("seriesSourceLinks", link)
+    if (!(await getRecord<SeriesSourceLink>("seriesSourceLinks", link.id)))
+      await putRecord("seriesSourceLinks", link)
   }
   for (const check of parsed.releaseChecks || []) {
     if (!(await getRecord<ReleaseCheck>("releaseChecks", check.id))) await putRecord("releaseChecks", check)
@@ -459,7 +510,7 @@ export const DEFAULT_SETTINGS: ExtensionSettings = {
 async function legacyEntries(): Promise<LegacyTrackerEntry[]> {
   if (typeof chrome === "undefined" || !chrome.storage?.local?.get) return []
   const value = await chrome.storage.local.get(LEGACY_STORAGE_KEY)
-  return Array.isArray(value[LEGACY_STORAGE_KEY]) ? value[LEGACY_STORAGE_KEY] as LegacyTrackerEntry[] : []
+  return Array.isArray(value[LEGACY_STORAGE_KEY]) ? (value[LEGACY_STORAGE_KEY] as LegacyTrackerEntry[]) : []
 }
 
 /** Runs once and never uses titles to combine legacy records. */

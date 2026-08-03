@@ -6,6 +6,7 @@ node_modules/
 
 # Build / temp
 dist/
+release/
 .env
 
 # Chrome extension junk

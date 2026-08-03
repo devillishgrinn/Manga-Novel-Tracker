@@ -25,6 +25,7 @@ function nextRefreshTime(hour: number): number {
 }
 
 async function ensureRefreshAlarm(): Promise<void> {
+  if (!chrome.alarms?.create || !chrome.alarms?.clear) return
   const settings = await loadSettings()
   if (!settings.refreshEnabled) {
     await chrome.alarms.clear(DAILY_REFRESH_ALARM)
@@ -57,6 +58,7 @@ async function fetchPublicText(url: string): Promise<string> {
 }
 
 async function updateBadge(): Promise<void> {
+  if (!chrome.action?.setBadgeText) return
   const unread = (await listLibraryEntries()).reduce((total, entry) => total + entry.unreadCount, 0)
   await chrome.action.setBadgeText({ text: unread > 0 ? String(unread) : "" })
   if (unread > 0) await chrome.action.setBadgeBackgroundColor({ color: "#2f7d4a" })
@@ -91,7 +93,11 @@ export async function refreshLibrary(): Promise<void> {
       const pageUrl = new URL(source.seriesUrl)
       const html = await fetchPublicText(source.seriesUrl)
       const snapshot = adapter.parseSeriesPage(html, pageUrl)
-      const result = await recordSeriesRefresh(snapshot, source.id, snapshot ? undefined : "No release metadata found")
+      const result = await recordSeriesRefresh(
+        snapshot,
+        source.id,
+        snapshot ? undefined : "No release metadata found",
+      )
       if (result?.hasNewRelease && result.source.latestChapter !== undefined) {
         await notifyRelease(result.source.title, result.source.latestChapter)
       }
@@ -118,17 +124,27 @@ if (chrome.runtime?.onStartup?.addListener) {
 }
 void startup()
 
-chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === DAILY_REFRESH_ALARM) void refreshLibrary()
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName === "local" && changes.extensionSettings) void ensureRefreshAlarm()
 })
+
+if (chrome.alarms?.onAlarm?.addListener) {
+  chrome.alarms.onAlarm.addListener((alarm) => {
+    if (alarm.name === DAILY_REFRESH_ALARM) void refreshLibrary()
+  })
+}
 
 chrome.runtime.onMessage.addListener((message: ExtensionMessage, _sender, sendResponse) => {
   if (message.type === "TRACK_PROGRESS") {
-    void saveProgress(message.payload).then(updateBadge).then(() => sendResponse({ ok: true }))
+    void saveProgress(message.payload)
+      .then(updateBadge)
+      .then(() => sendResponse({ ok: true }))
     return true
   }
   if (message.type === "REFRESH_LIBRARY") {
-    void refreshLibrary().then(() => sendResponse({ ok: true })).catch((error: Error) => sendResponse({ ok: false, error: error.message }))
+    void refreshLibrary()
+      .then(() => sendResponse({ ok: true }))
+      .catch((error: Error) => sendResponse({ ok: false, error: error.message }))
     return true
   }
   if (message.type === "OPEN_DASHBOARD") {

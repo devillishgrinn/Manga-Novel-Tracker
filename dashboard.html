@@ -1,22 +1,141 @@
 <!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Manga/Novel Tracker Library</title>
-  <style>
-    :root { color-scheme: dark; font-family: system-ui, sans-serif; } body { margin:0; background:#101522; color:#edf2ff; } header, main { max-width:1080px; margin:auto; padding:18px 24px; } header { display:flex; gap:12px; align-items:center; flex-wrap:wrap; border-bottom:1px solid #29334b; } h1 { margin:0 auto 0 0; font-size:20px; } input, select, button { background:#172238; color:#edf2ff; border:1px solid #41557d; border-radius:7px; padding:8px; } button { cursor:pointer; } button:hover { background:#30466f; } #list { display:grid; gap:10px; } .card { display:grid; grid-template-columns:64px 1fr auto; gap:14px; align-items:center; border:1px solid #293b5b; background:#141c2c; border-radius:10px; padding:12px; } .cover { width:56px; height:76px; object-fit:cover; background:#273652; border-radius:6px; } .title { margin:0 0 5px; font-size:16px; } .meta { color:#a9b9d8; font-size:13px; margin:3px 0; } .card-actions { display:flex; flex-wrap:wrap; gap:6px; justify-content:flex-end; } .empty { color:#a9b9d8; text-align:center; padding:48px; } dialog { background:#172238; color:#edf2ff; border:1px solid #51688f; border-radius:10px; max-width:520px; } dialog div { display:grid; gap:8px; } .toolbar { display:flex; gap:8px; flex-wrap:wrap; } #backup { display:none; }
-  </style>
-</head>
-<body>
-  <header>
-    <h1>Library</h1>
-    <input id="search" type="search" placeholder="Search series" aria-label="Search series" />
-    <select id="media" aria-label="Media filter"><option value="all">All media</option><option value="manga">Manga</option><option value="novel">Novels</option></select>
-    <button id="refresh">Refresh releases</button><button id="export">Export</button><button id="import">Import</button><input id="backup" type="file" accept="application/json" />
-  </header>
-  <main><section id="list" aria-live="polite"></section></main>
-  <dialog id="linkDialog"><form method="dialog"><div><strong>Link source</strong><label>Source <select id="sourceChoice"></select></label><p id="linkCopy" class="meta"></p><menu><button value="cancel">Cancel</button><button id="confirmLink" value="default">Link</button></menu></div></form></dialog>
-  <script src="dist/dashboard.js"></script>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Manga/Novel Tracker Library</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: system-ui, sans-serif;
+      }
+      body {
+        margin: 0;
+        background: #101522;
+        color: #edf2ff;
+      }
+      header,
+      main {
+        max-width: 1080px;
+        margin: auto;
+        padding: 18px 24px;
+      }
+      header {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        flex-wrap: wrap;
+        border-bottom: 1px solid #29334b;
+      }
+      h1 {
+        margin: 0 auto 0 0;
+        font-size: 20px;
+      }
+      input,
+      select,
+      button {
+        background: #172238;
+        color: #edf2ff;
+        border: 1px solid #41557d;
+        border-radius: 7px;
+        padding: 8px;
+      }
+      button {
+        cursor: pointer;
+      }
+      button:hover {
+        background: #30466f;
+      }
+      #list {
+        display: grid;
+        gap: 10px;
+      }
+      .card {
+        display: grid;
+        grid-template-columns: 64px 1fr auto;
+        gap: 14px;
+        align-items: center;
+        border: 1px solid #293b5b;
+        background: #141c2c;
+        border-radius: 10px;
+        padding: 12px;
+      }
+      .cover {
+        width: 56px;
+        height: 76px;
+        object-fit: cover;
+        background: #273652;
+        border-radius: 6px;
+      }
+      .title {
+        margin: 0 0 5px;
+        font-size: 16px;
+      }
+      .meta {
+        color: #a9b9d8;
+        font-size: 13px;
+        margin: 3px 0;
+      }
+      .card-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        justify-content: flex-end;
+      }
+      .empty {
+        color: #a9b9d8;
+        text-align: center;
+        padding: 48px;
+      }
+      dialog {
+        background: #172238;
+        color: #edf2ff;
+        border: 1px solid #51688f;
+        border-radius: 10px;
+        max-width: 520px;
+      }
+      dialog div {
+        display: grid;
+        gap: 8px;
+      }
+      .toolbar {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      #backup {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Library</h1>
+      <input id="search" type="search" placeholder="Search series" aria-label="Search series" />
+      <select id="media" aria-label="Media filter">
+        <option value="all">All media</option>
+        <option value="manga">Manga</option>
+        <option value="novel">Novels</option>
+      </select>
+      <button id="refresh">Refresh releases</button><button id="export">Export</button
+      ><button id="import">Import</button><input id="backup" type="file" accept="application/json" />
+    </header>
+    <main><section id="list" aria-live="polite"></section></main>
+    <dialog id="linkDialog">
+      <form method="dialog">
+        <div>
+          <strong>Link source</strong
+          ><label
+            >Source
+            <select id="sourceChoice"></select
+          ></label>
+          <p id="linkCopy" class="meta"></p>
+          <menu>
+            <button value="cancel">Cancel</button><button id="confirmLink" value="default">Link</button>
+          </menu>
+        </div>
+      </form>
+    </dialog>
+    <script src="dist/dashboard.js"></script>
+  </body>
 </html>

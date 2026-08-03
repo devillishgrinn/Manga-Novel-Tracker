@@ -29,6 +29,16 @@ Private, sideloaded Manifest V3 Chrome extension for tracking manga and novel re
 - Existing tests: 49 unit and 3 integration tests passed; build passed on 2026-07-30.
 - No CI workflow, persistent memory, release automation, dashboard, update polling, or data migration existed.
 
+## Current implementation status
+
+- Version `0.2.0` introduces IndexedDB-backed `LibrarySeries`, `SourceSeries`, `SeriesSourceLink`, and release-check persistence through `src/core/libraryDb.ts`.
+- Legacy `trackerEntries` migrate once into separate source-backed records and are removed only after migration verification.
+- Content scripts wait for user onboarding consent and auto-tracking settings; the manifest no longer injects into every HTTP(S) page.
+- The background worker schedules daily public, unauthenticated refreshes, rate-limits requests, records baselines/new releases, updates the action badge, and uses optional notification permission.
+- Popup is a compact status/resume surface; `dashboard.html` provides library management, explicit linking, progress/preferred-source controls, refresh, and JSON backup import/export; `settings.html` provides consent and refresh controls.
+- CI runs type-checking, linting, formatting, tests, build, and Windows release packaging. `npm run release:package` creates a ZIP and SHA-256 file in ignored `release/`.
+- Automated checks on 2026-08-02: type-check, lint, Prettier, build, 25 unit tests, 1 integration test, and production dependency audit all pass.
+
 ## Implementation decisions
 
 - Continue reading on source sites; no embedded/offline reader.
@@ -38,3 +48,4 @@ Private, sideloaded Manifest V3 Chrome extension for tracking manga and novel re
 ## Changelog
 
 - 2026-07-30: Created project memory and recorded the approved production architecture.
+- 2026-08-02: Implemented the v0.2.0 local-first production foundation, release tooling, CI, dashboard, refresh queue, and data migration.

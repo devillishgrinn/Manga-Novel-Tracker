@@ -1,11 +1,10 @@
-
 import { SiteAdapter } from "../core/adapter"
 import { TrackerPayload } from "../core/models"
 
 function slugToTitle(slug: string): string {
   return slug
     .split("-")
-    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
     .join(" ")
 }
 
@@ -31,25 +30,23 @@ export const fenrirealmAdapter: SiteAdapter = {
     const seriesSlug = parts[1]
     const chapterFromUrl = Number(parts[2])
 
-    const chapter =
-      !Number.isNaN(chapterFromUrl)
-        ? chapterFromUrl
-        : extractChapterFromText()
+    const chapter = !Number.isNaN(chapterFromUrl) ? chapterFromUrl : extractChapterFromText()
 
     if (!chapter) return null
 
-    let coverUrl = document.querySelector('meta[property="og:image"]')?.getAttribute('content') ||
-        document.querySelector('meta[name="twitter:image"]')?.getAttribute('content') ||
-        document.querySelector(`img[src*="${seriesSlug}"]`)?.getAttribute('src');
+    let coverUrl =
+      document.querySelector('meta[property="og:image"]')?.getAttribute("content") ||
+      document.querySelector('meta[name="twitter:image"]')?.getAttribute("content") ||
+      document.querySelector(`img[src*="${seriesSlug}"]`)?.getAttribute("src")
 
-    if (coverUrl && !coverUrl.startsWith('http')) {
-        try {
-            coverUrl = new URL(coverUrl, window.location.origin).href;
-        } catch (e) {
-            coverUrl = undefined; // Discard invalid URLs
-        }
+    if (coverUrl && !coverUrl.startsWith("http")) {
+      try {
+        coverUrl = new URL(coverUrl, window.location.origin).href
+      } catch {
+        coverUrl = undefined // Discard invalid URLs
+      }
     }
-    
+
     return {
       title: slugToTitle(seriesSlug),
       mediaType: "novel",
@@ -57,8 +54,8 @@ export const fenrirealmAdapter: SiteAdapter = {
       unit: "chapter",
       sourceUrl: window.location.href,
       siteId: "fenrirealm",
-			seriesUrl: `${url.origin}/series/${seriesSlug}`,
-      coverUrl: coverUrl || undefined
+      seriesUrl: `${url.origin}/series/${seriesSlug}`,
+      coverUrl: coverUrl || undefined,
     }
-  }
+  },
 }

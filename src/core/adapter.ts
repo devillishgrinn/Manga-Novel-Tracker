@@ -1,9 +1,4 @@
-import {
-  ProgressSnapshot,
-  SeriesSnapshot,
-  SourceSeriesIdentity,
-  TrackerPayload,
-} from "./models"
+import { ProgressSnapshot, SeriesSnapshot, SourceSeriesIdentity, TrackerPayload } from "./models"
 
 /**
  * Source adapters are statically compiled and intentionally parsing-only.
@@ -70,9 +65,7 @@ export function createSourceSeriesIdentity(
 ): SourceSeriesIdentity {
   const canonicalUrl = canonicalizeSeriesUrl(seriesUrl)
   const parsed = new URL(canonicalUrl)
-  const key = (externalId || `${parsed.hostname}${parsed.pathname}`)
-    .toLowerCase()
-    .replace(/^\/+|\/+$/g, "")
+  const key = (externalId || `${parsed.hostname}${parsed.pathname}`).toLowerCase().replace(/^\/+|\/+$/g, "")
 
   return {
     id: `${sourceId}:${encodeURIComponent(key)}`,

@@ -1,23 +1,83 @@
 <!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Manga/Novel Tracker</title>
-  <style>
-    :root { color-scheme: dark; font-family: system-ui, sans-serif; }
-    body { width: 330px; margin: 0; background: #101522; color: #edf2ff; }
-    header, .actions { padding: 12px; display: flex; gap: 8px; align-items: center; }
-    header { justify-content: space-between; border-bottom: 1px solid #29334b; }
-    h1 { font-size: 15px; margin: 0; } button { border: 1px solid #41557d; border-radius: 7px; background: #243452; color: #edf2ff; padding: 7px 9px; cursor: pointer; }
-    button:hover { background: #30466f; } #list { padding: 0 12px 12px; } .entry { display:flex; justify-content:space-between; gap:8px; padding:9px 0; border-bottom:1px solid #232d42; }
-    .title { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:205px; font-weight:600; } .meta, .empty { color:#a9b9d8; font-size:12px; } .actions { border-top: 1px solid #29334b; }
-  </style>
-</head>
-<body>
-  <header><h1>Reading list</h1><span id="unread" class="meta"></span></header>
-  <main id="list" aria-live="polite"></main>
-  <div class="actions"><button id="refresh">Refresh</button><button id="dashboard">Open library</button><button id="settings">Settings</button></div>
-  <script src="dist/popup.js"></script>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Manga/Novel Tracker</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: system-ui, sans-serif;
+      }
+      body {
+        width: 330px;
+        margin: 0;
+        background: #101522;
+        color: #edf2ff;
+      }
+      header,
+      .actions {
+        padding: 12px;
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+      header {
+        justify-content: space-between;
+        border-bottom: 1px solid #29334b;
+      }
+      h1 {
+        font-size: 15px;
+        margin: 0;
+      }
+      button {
+        border: 1px solid #41557d;
+        border-radius: 7px;
+        background: #243452;
+        color: #edf2ff;
+        padding: 7px 9px;
+        cursor: pointer;
+      }
+      button:hover {
+        background: #30466f;
+      }
+      #list {
+        padding: 0 12px 12px;
+      }
+      .entry {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 9px 0;
+        border-bottom: 1px solid #232d42;
+      }
+      .title {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        max-width: 205px;
+        font-weight: 600;
+      }
+      .meta,
+      .empty {
+        color: #a9b9d8;
+        font-size: 12px;
+      }
+      .actions {
+        border-top: 1px solid #29334b;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Reading list</h1>
+      <span id="unread" class="meta"></span>
+    </header>
+    <main id="list" aria-live="polite"></main>
+    <div class="actions">
+      <button id="refresh">Refresh</button><button id="dashboard">Open library</button
+      ><button id="settings">Settings</button>
+    </div>
+    <script src="dist/popup.js"></script>
+  </body>
 </html>

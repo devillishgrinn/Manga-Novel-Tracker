@@ -106,7 +106,7 @@ export interface LegacyTrackerEntry {
 }
 
 /** @deprecated The pre-production storage record, retained only for migration/tests. */
-export interface TrackerEntry extends LegacyTrackerEntry {}
+export type TrackerEntry = LegacyTrackerEntry
 
 /** Compatibility shape accepted from existing content scripts during migration. */
 export interface TrackerPayload {

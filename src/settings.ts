@@ -23,7 +23,10 @@ document.getElementById("save")?.addEventListener("click", async () => {
     trackingEnabled: consent && (document.getElementById("tracking") as HTMLInputElement).checked,
     refreshEnabled: (document.getElementById("refresh") as HTMLInputElement).checked,
     notificationsEnabled: (document.getElementById("notifications") as HTMLInputElement).checked,
-    refreshHourLocal: Math.max(0, Math.min(23, Number((document.getElementById("hour") as HTMLInputElement).value) || 9)),
+    refreshHourLocal: Math.max(
+      0,
+      Math.min(23, Number((document.getElementById("hour") as HTMLInputElement).value) || 9),
+    ),
   })
   chrome.runtime.sendMessage({ type: "REFRESH_LIBRARY" })
   ;(document.getElementById("status") as HTMLElement).textContent = " Saved."
