@@ -13,4 +13,12 @@ export interface OpenDashboardMessage {
   type: "OPEN_DASHBOARD"
 }
 
-export type ExtensionMessage = TrackProgressMessage | RefreshLibraryMessage | OpenDashboardMessage
+export interface CheckSourceHealthMessage {
+  type: "CHECK_SOURCE_HEALTH"
+}
+
+export type ExtensionMessage =
+  | TrackProgressMessage
+  | RefreshLibraryMessage
+  | OpenDashboardMessage
+  | CheckSourceHealthMessage

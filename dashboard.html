@@ -46,6 +46,28 @@
       button:hover {
         background: #30466f;
       }
+      button:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+      .view-tabs {
+        display: flex;
+        gap: 8px;
+        max-width: 1080px;
+        margin: 0 auto;
+        padding: 12px 24px 0;
+      }
+      .view-tab {
+        background: transparent;
+        border: 1px solid #41557d;
+        border-bottom: none;
+        border-radius: 7px 7px 0 0;
+        padding: 8px 14px;
+      }
+      .view-tab[aria-selected="true"] {
+        background: #172238;
+        border-color: #51688f;
+      }
       #list {
         display: grid;
         gap: 10px;
@@ -106,21 +128,102 @@
       #backup {
         display: none;
       }
+      .health-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 16px;
+      }
+      .health-header h2 {
+        margin: 0;
+        font-size: 18px;
+      }
+      .health-table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      .health-table th,
+      .health-table td {
+        text-align: left;
+        padding: 10px 12px;
+        border-bottom: 1px solid #29334b;
+        font-size: 14px;
+      }
+      .health-table th {
+        color: #a9b9d8;
+        font-weight: 600;
+      }
+      .health-table tr:last-child td {
+        border-bottom: none;
+      }
+      .status-badge {
+        display: inline-block;
+        padding: 3px 8px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: capitalize;
+      }
+      .status-badge.healthy {
+        background: #1f3d2a;
+        color: #8fe0a8;
+      }
+      .status-badge.warning {
+        background: #3d341f;
+        color: #f0d48f;
+      }
+      .status-badge.broken {
+        background: #3d1f1f;
+        color: #f08f8f;
+      }
+      .status-badge.unknown {
+        background: #273652;
+        color: #a9b9d8;
+      }
+      .health-error {
+        max-width: 280px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: #f08f8f;
+      }
     </style>
   </head>
   <body>
     <header>
       <h1>Library</h1>
-      <input id="search" type="search" placeholder="Search series" aria-label="Search series" />
-      <select id="media" aria-label="Media filter">
-        <option value="all">All media</option>
-        <option value="manga">Manga</option>
-        <option value="novel">Novels</option>
-      </select>
-      <button id="refresh">Refresh releases</button><button id="export">Export</button
-      ><button id="import">Import</button><input id="backup" type="file" accept="application/json" />
     </header>
-    <main><section id="list" aria-live="polite"></section></main>
+    <nav class="view-tabs" role="tablist" aria-label="Library views">
+      <button id="tabSeries" class="view-tab" role="tab" aria-selected="true" aria-controls="libraryPanel">
+        Series
+      </button>
+      <button id="tabHealth" class="view-tab" role="tab" aria-selected="false" aria-controls="healthPanel">
+        Source Health
+      </button>
+    </nav>
+    <main>
+      <section id="libraryPanel" role="tabpanel" aria-labelledby="tabSeries">
+        <div class="toolbar">
+          <input id="search" type="search" placeholder="Search series" aria-label="Search series" />
+          <select id="media" aria-label="Media filter">
+            <option value="all">All media</option>
+            <option value="manga">Manga</option>
+            <option value="novel">Novels</option>
+          </select>
+          <button id="refresh">Refresh releases</button><button id="export">Export</button
+          ><button id="import">Import</button><input id="backup" type="file" accept="application/json" />
+        </div>
+        <section id="list" aria-live="polite"></section>
+      </section>
+      <section id="healthPanel" role="tabpanel" aria-labelledby="tabHealth" hidden>
+        <div class="health-header">
+          <h2>Source Health</h2>
+          <button id="checkHealth">Check sources</button>
+        </div>
+        <div id="healthList" aria-live="polite"></div>
+      </section>
+    </main>
     <dialog id="linkDialog">
       <form method="dialog">
         <div>

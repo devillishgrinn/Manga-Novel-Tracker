@@ -4,13 +4,18 @@ import {
   importLibraryBackup,
   linkSourceSeries,
   listLibraryEntries,
+  listSourceHealth,
   setLibraryProgress,
   setPreferredSource,
   unlinkSourceSeries,
 } from "./core/libraryDb"
 import { LibraryEntry } from "./core/models"
+import { adapters } from "./core/registry"
+import { formatRelativeTime, mergeAdapterHealth } from "./core/sourceHealth"
 
 let cachedEntries: LibraryEntry[] = []
+type DashboardView = "series" | "health"
+let activeView: DashboardView = "series"
 
 function escapeHtml(value: string): string {
   return value.replace(
@@ -32,6 +37,21 @@ function filteredEntries(): LibraryEntry[] {
       (media === "all" || entry.series.mediaType === media) &&
       (!search || entry.series.title.toLowerCase().includes(search)),
   )
+}
+
+function setActiveView(view: DashboardView): void {
+  activeView = view
+  const libraryPanel = document.getElementById("libraryPanel") as HTMLElement
+  const healthPanel = document.getElementById("healthPanel") as HTMLElement
+  const tabSeries = document.getElementById("tabSeries") as HTMLButtonElement
+  const tabHealth = document.getElementById("tabHealth") as HTMLButtonElement
+
+  libraryPanel.hidden = view !== "series"
+  healthPanel.hidden = view !== "health"
+  tabSeries.setAttribute("aria-selected", String(view === "series"))
+  tabHealth.setAttribute("aria-selected", String(view === "health"))
+
+  if (view === "health") void renderHealth()
 }
 
 async function render(): Promise<void> {
@@ -58,6 +78,47 @@ async function render(): Promise<void> {
     )
     .join("")
   list.querySelectorAll<HTMLElement>(".card").forEach(bindCard)
+}
+
+async function renderHealth(): Promise<void> {
+  const healthList = document.getElementById("healthList") as HTMLElement
+  const records = await listSourceHealth()
+  const rows = mergeAdapterHealth(adapters, records)
+
+  healthList.innerHTML = `
+    <table class="health-table">
+      <thead>
+        <tr>
+          <th scope="col">Source</th>
+          <th scope="col">Status</th>
+          <th scope="col">Response time</th>
+          <th scope="col">Last checked</th>
+          <th scope="col">Error</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows
+          .map((row) => {
+            const status = row.health?.status ?? "unknown"
+            const statusLabel = status === "unknown" ? "Not checked" : status
+            const responseTime =
+              row.health && row.health.responseTime > 0 ? `${Math.round(row.health.responseTime)} ms` : "—"
+            const lastChecked = row.health
+              ? formatRelativeTime(row.health.lastChecked)
+              : "Never checked"
+            const error = row.health?.lastError ?? ""
+            return `
+          <tr>
+            <td>${escapeHtml(row.displayName)}</td>
+            <td><span class="status-badge ${escapeHtml(status)}">${escapeHtml(statusLabel)}</span></td>
+            <td>${escapeHtml(responseTime)}</td>
+            <td>${escapeHtml(lastChecked)}</td>
+            <td class="health-error"${error ? ` title="${escapeHtml(error)}"` : ""}>${escapeHtml(error || "—")}</td>
+          </tr>`
+          })
+          .join("")}
+      </tbody>
+    </table>`
 }
 
 function entryForCard(card: HTMLElement): LibraryEntry | undefined {
@@ -124,6 +185,8 @@ function openLinkDialog(target: LibraryEntry): void {
   dialog.showModal()
 }
 
+document.getElementById("tabSeries")?.addEventListener("click", () => setActiveView("series"))
+document.getElementById("tabHealth")?.addEventListener("click", () => setActiveView("health"))
 document.getElementById("search")?.addEventListener("input", () => void render())
 document.getElementById("media")?.addEventListener("change", () => void render())
 document
@@ -131,6 +194,14 @@ document
   ?.addEventListener("click", () =>
     chrome.runtime.sendMessage({ type: "REFRESH_LIBRARY" }, () => void render()),
   )
+document.getElementById("checkHealth")?.addEventListener("click", () => {
+  const button = document.getElementById("checkHealth") as HTMLButtonElement
+  button.disabled = true
+  chrome.runtime.sendMessage({ type: "CHECK_SOURCE_HEALTH" }, () => {
+    button.disabled = false
+    if (activeView === "health") void renderHealth()
+  })
+})
 document.getElementById("export")?.addEventListener("click", async () => {
   const blob = new Blob([await exportLibraryBackup()], { type: "application/json" })
   const url = URL.createObjectURL(blob)

@@ -1,13 +1,15 @@
-import { getAdapter } from "./core/registry"
+import { adapters, getAdapter } from "./core/registry"
 import {
   initializeLibrary,
   listLibraryEntries,
   listSourceSeries,
   recordSeriesRefresh,
   saveProgress,
+  saveSourceHealth,
 } from "./core/libraryDb"
 import { ExtensionMessage } from "./core/messages"
 import { loadSettings } from "./core/settings"
+import { calculateHealth } from "./core/sourceHealth"
 
 const DAILY_REFRESH_ALARM = "daily-release-refresh"
 const REQUEST_TIMEOUT_MS = 10_000
@@ -91,8 +93,14 @@ export async function refreshLibrary(): Promise<void> {
     }
     try {
       const pageUrl = new URL(source.seriesUrl)
+      const start = performance.now()
       const html = await fetchPublicText(source.seriesUrl)
       const snapshot = adapter.parseSeriesPage(html, pageUrl)
+      const responseTime = performance.now() - start
+      await saveSourceHealth({
+        sourceId: source.sourceId,
+        ...calculateHealth(snapshot, responseTime),
+      })
       const result = await recordSeriesRefresh(
         snapshot,
         source.id,
@@ -103,11 +111,40 @@ export async function refreshLibrary(): Promise<void> {
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Refresh failed"
+      await saveSourceHealth({
+        sourceId: source.sourceId,
+        ...calculateHealth(null, 0, message),
+      })
       await recordSeriesRefresh(null, source.id, message)
     }
     if (index < sources.length - 1) await wait(REQUEST_SPACING_MS)
   }
   await updateBadge()
+}
+
+export async function checkSourceHealth(): Promise<void> {
+  for (let index = 0; index < adapters.length; index += 1) {
+    const adapter = adapters[index]
+    if (!adapter.healthProbeUrl) continue
+    try {
+      const pageUrl = new URL(adapter.healthProbeUrl)
+      const start = performance.now()
+      const html = await fetchPublicText(adapter.healthProbeUrl)
+      const snapshot = adapter.parseSeriesPage(html, pageUrl)
+      const responseTime = performance.now() - start
+      await saveSourceHealth({
+        sourceId: adapter.id,
+        ...calculateHealth(snapshot, responseTime),
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Health check failed"
+      await saveSourceHealth({
+        sourceId: adapter.id,
+        ...calculateHealth(null, 0, message),
+      })
+    }
+    if (index < adapters.length - 1) await wait(REQUEST_SPACING_MS)
+  }
 }
 
 async function startup(): Promise<void> {
@@ -143,6 +180,12 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, _sender, sendRe
   }
   if (message.type === "REFRESH_LIBRARY") {
     void refreshLibrary()
+      .then(() => sendResponse({ ok: true }))
+      .catch((error: Error) => sendResponse({ ok: false, error: error.message }))
+    return true
+  }
+  if (message.type === "CHECK_SOURCE_HEALTH") {
+    void checkSourceHealth()
       .then(() => sendResponse({ ok: true }))
       .catch((error: Error) => sendResponse({ ok: false, error: error.message }))
     return true

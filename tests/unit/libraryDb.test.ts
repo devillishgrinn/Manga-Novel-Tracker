@@ -3,9 +3,11 @@ import { createSourceSeriesIdentity } from "../../src/core/adapter"
 import {
   linkSourceSeries,
   listLibraryEntries,
+  listSourceHealth,
   recordSeriesRefresh,
   resetMemoryDatabaseForTests,
   saveProgress,
+  saveSourceHealth,
   setPreferredSource,
 } from "../../src/core/libraryDb"
 import { ProgressSnapshot } from "../../src/core/models"
@@ -66,5 +68,25 @@ describe("libraryDb", () => {
     await linkSourceSeries(series.id, other.preferredSource.id)
     await setPreferredSource(series.id, other.preferredSource.id)
     expect((await listLibraryEntries())[0].series.preferredSourceSeriesId).toBe(other.preferredSource.id)
+  })
+
+  it("persists source health records by sourceId", async () => {
+    await saveSourceHealth({
+      sourceId: "novelbin",
+      status: "healthy",
+      responseTime: 420,
+      lastChecked: 1_700_000_000_000,
+    })
+    await saveSourceHealth({
+      sourceId: "novelbin",
+      status: "broken",
+      responseTime: 0,
+      lastChecked: 1_700_000_100_000,
+      lastError: "Request failed (503)",
+    })
+    const records = await listSourceHealth()
+    expect(records).toHaveLength(1)
+    expect(records[0].status).toBe("broken")
+    expect(records[0].lastError).toBe("Request failed (503)")
   })
 })

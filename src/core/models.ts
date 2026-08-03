@@ -119,3 +119,11 @@ export interface TrackerPayload {
   coverUrl?: string
   seriesUrl?: string
 }
+
+export interface SourceHealth {
+    sourceId: string;
+    status: "healthy" | "warning" | "broken";
+    responseTime: number;
+    lastChecked: number;
+    lastError?: string;
+}

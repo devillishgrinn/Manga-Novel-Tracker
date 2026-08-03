@@ -8,6 +8,8 @@ import { ProgressSnapshot, SeriesSnapshot, SourceSeriesIdentity, TrackerPayload 
 export interface SourceAdapter {
   readonly id: string
   readonly displayName: string
+  /** Stable public series page used for adapter health probes. */
+  readonly healthProbeUrl?: string
   matchesChapter(url: URL): boolean
   extractProgress(doc: Document, url: URL): ProgressSnapshot | null
   identifySeries(doc: Document, url: URL): SourceSeriesIdentity | null
@@ -27,10 +29,15 @@ export interface SiteAdapter {
  * production adapter contract to the registry. Source modules can be
  * migrated individually without altering the background safety boundary.
  */
-export function adaptLegacyAdapter(legacy: SiteAdapter, displayName: string): SourceAdapter {
+export function adaptLegacyAdapter(
+  legacy: SiteAdapter,
+  displayName: string,
+  healthProbeUrl?: string,
+): SourceAdapter {
   return {
     id: legacy.siteId,
     displayName,
+    healthProbeUrl,
     matchesChapter(url) {
       return legacy.match(url.href)
     },

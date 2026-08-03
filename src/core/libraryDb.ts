@@ -8,16 +8,17 @@ import {
   SeriesSnapshot,
   SeriesSourceLink,
   SourceSeries,
+  SourceHealth,
   SourceSeriesIdentity,
 } from "./models"
 
 const DB_NAME = "manga-novel-tracker"
-const DB_VERSION = 1
+const DB_VERSION = 2
 const LEGACY_STORAGE_KEY = "trackerEntries"
 const MIGRATION_KEY = "legacy-v1-to-indexeddb"
 
 type StoreName =
-  "librarySeries" | "sourceSeries" | "seriesSourceLinks" | "releaseChecks" | "migrationMetadata"
+  "librarySeries" | "sourceSeries" | "seriesSourceLinks" | "releaseChecks" | "migrationMetadata" | "sourceHealth";
 
 const memoryStores: Record<StoreName, Map<string, unknown>> = {
   librarySeries: new Map(),
@@ -25,6 +26,7 @@ const memoryStores: Record<StoreName, Map<string, unknown>> = {
   seriesSourceLinks: new Map(),
   releaseChecks: new Map(),
   migrationMetadata: new Map(),
+  sourceHealth: new Map(),
 }
 
 function supportsIndexedDb(): boolean {
@@ -73,6 +75,10 @@ function openDatabase(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains("migrationMetadata"))
         db.createObjectStore("migrationMetadata", { keyPath: "id" })
+      if (!db.objectStoreNames.contains("sourceHealth"))
+        db.createObjectStore("sourceHealth", {
+        keyPath: "sourceId",
+      });
     }
     request.onsuccess = () => resolve(request.result)
     request.onerror = () => reject(request.error || new Error("Unable to open IndexedDB"))
@@ -437,6 +443,25 @@ export async function recordSeriesRefresh(
     message: error,
   } satisfies ReleaseCheck)
   return { source: updated, status, hasNewRelease }
+}
+
+export async function saveSourceHealth(health: SourceHealth): Promise<void> {
+  if (!supportsIndexedDb()) {
+    memoryStores.sourceHealth.set(health.sourceId, health)
+    return
+  }
+  const db = await openDatabase()
+  try {
+    const transaction = db.transaction("sourceHealth", "readwrite")
+    transaction.objectStore("sourceHealth").put(health)
+    await transactionComplete(transaction)
+  } finally {
+    db.close()
+  }
+}
+
+export async function listSourceHealth(): Promise<SourceHealth[]> {
+  return getAllRecords<SourceHealth>("sourceHealth");
 }
 
 export async function exportLibraryBackup(): Promise<string> {
