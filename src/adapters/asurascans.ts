@@ -1,7 +1,7 @@
 import { SiteAdapter } from "../core/adapter"
 import { TrackerPayload } from "../core/models"
 
-const CHAPTER_PATH_REGEX = /^\/series\/([^/]+)\/chapter\/(\d+(?:\.\d+)?)(?:\/)?$/i
+const CHAPTER_PATH_REGEX = /^\/(?:series|comics)\/([^/]+)\/chapter\/(\d+(?:\.\d+)?)(?:\/)?$/i
 const ASURA_HOST_REGEX = /(^|\.)asuracomic\.net$|(^|\.)asurascans\.com$/i
 const SITE_NAME_REGEX = /^Asura\s+Scans$/i
 
@@ -27,7 +27,9 @@ function extractChapterParts(pathname: string): { seriesSlug: string; chapter: n
 }
 
 function extractTitleFromHeading(seriesSlug: string): string | null {
-  const headingLink = document.querySelector(`a[href*="/series/${seriesSlug}"]:not([href*="/chapter/"])`)
+  const headingLink = document.querySelector(
+    `a[href*="/comics/${seriesSlug}"]:not([href*="/chapter/"]), a[href*="/series/${seriesSlug}"]:not([href*="/chapter/"])`,
+  )
 
   const headingText = headingLink?.textContent?.trim()
   if (headingText) {
@@ -36,7 +38,7 @@ function extractTitleFromHeading(seriesSlug: string): string | null {
 
   const h1Text = document.querySelector("h1")?.textContent?.trim()
   return h1Text || null
-}
+} 
 
 function extractTitleFromMeta(chapter: number): string | null {
   const rawTitle =
@@ -131,7 +133,7 @@ export const asuraScansAdapter: SiteAdapter = {
       unit: "chapter",
       sourceUrl: window.location.href,
       siteId: "asurascans",
-      seriesUrl: `${currentUrl.origin}/series/${seriesSlug}`,
+      seriesUrl: `${currentUrl.origin}/comics/${seriesSlug}`,
       coverUrl: extractCoverUrl(currentUrl.origin),
     }
   },

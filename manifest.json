@@ -18,7 +18,7 @@
     "https://mangakakalot.gg/*",
     "https://www.mangakakalot.gg/*",
     "https://novelbin.com/*",
-    "https://www.novelbin.com/*"
+    "https://www.novelarrow.com/*"
   ],
   "background": {
     "service_worker": "dist/background.js",
@@ -30,11 +30,11 @@
         "https://fenrirealm.com/series/*",
         "https://www.fenrirealm.com/series/*",
         "https://helioscans.com/chapter/*",
-        "https://asuracomic.net/series/*/chapter/*",
-        "https://www.asuracomic.net/series/*/chapter/*",
-        "https://asurascans.com/series/*/chapter/*",
-        "https://www.asurascans.com/series/*/chapter/*",
-        "https://beta.asurascans.com/series/*/chapter/*",
+        "https://asuracomic.net/comics/*/chapter/*",
+        "https://www.asuracomic.net/comics/*/chapter/*",
+        "https://asurascans.com/comics/*/chapter/*",
+        "https://www.asurascans.com/comics/*/chapter/*",
+        "https://beta.asurascans.com/comics/*/chapter/*",
         "https://manganato.gg/manga/*/chapter*",
         "https://www.manganato.gg/manga/*/chapter*",
         "https://mangakakalot.gg/manga/*/chapter*",

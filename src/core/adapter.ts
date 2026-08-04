@@ -5,6 +5,12 @@ import { ProgressSnapshot, SeriesSnapshot, SourceSeriesIdentity, TrackerPayload 
  * Fetching, scheduling, rate limiting, and notification policy belong to the
  * background worker so no adapter can bypass the extension's safety boundary.
  */
+
+export interface AdapterHealthConfig {
+    healthCheckUrl: string
+    parserVersion: number
+}
+
 export interface SourceAdapter {
   readonly id: string
   readonly displayName: string
